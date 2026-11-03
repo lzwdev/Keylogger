@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>KeyLogs · Live</title>
+<style>
+  :root {
+    --bg: #0a0d18; --panel: #131729; --panel-2: #1a1f36;
+    --accent: #7c5cff; --accent-2: #22d3ee;
+    --text: #e6e8f2; --muted: #8a90a8;
+    --green: #34d399; --red: #f87171; --yellow: #fbbf24;
+    --border: #232842; --hover: rgba(124,92,255,0.06);
+    --grid: rgba(255,255,255,0.06);
+    --shadow: 0 10px 40px rgba(0,0,0,0.4);
+  }
+  html.light {
+    --bg: #f5f6fa; --panel: #ffffff; --panel-2: #eef0f7;
+    --accent: #6d4cff; --accent-2: #0891b2;
+    --text: #1a1d2b; --muted: #6b7186;
+    --green: #059669; --red: #dc2626; --yellow: #d97706;
+    --border: #d9dce8; --hover: rgba(109,76,255,0.06);
+    --grid: rgba(0,0,0,0.06);
+    --shadow: 0 10px 40px rgba(0,0,0,0.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
+    background: radial-gradient(1200px 600px at 20% -10%, var(--panel-2) 0%, var(--bg) 60%);
+    color: var(--text); padding: 24px; min-height: 100vh;
+    transition: background .25s, color .25s;
+  }
+  h1 {
+    margin: 0 0 4px; font-size: 26px; letter-spacing: -0.5px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent; display: inline-block;
+  }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+
+  .icon { width: 16px; height: 16px; display: inline-block; vertical-align: middle; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-lg { width: 20px; height: 20px; }
+
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    background: var(--panel); border: 1px solid var(--border);
+    padding: 12px 14px; border-radius: 14px; margin-bottom: 16px;
+    position: sticky; top: 12px; z-index: 20; backdrop-filter: blur(10px);
+    box-shadow: 0 4px 30px rgba(0,0,0,0.15); transition: background .25s, border-color .25s;
+  }
+  .toolbar button, .toolbar .custom-select-trigger, .toolbar input {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 12px; border-radius: 10px; font-size: 13px; outline: none;
+    transition: border-color .15s, background .15s, color .15s;
+  }
+  .toolbar input { min-width: 160px; }
+  .toolbar input:focus, .toolbar .custom-select-trigger:focus { border-color: var(--accent); }
+  .toolbar button {
+    cursor: pointer; background: transparent; border: 1px solid var(--border);
+    font-weight: 600; color: var(--muted); display: inline-flex; align-items: center; gap: 6px;
+    transition: transform .15s, opacity .15s, color .15s, border-color .15s, background .15s;
+  }
+  .toolbar button:hover { transform: translateY(-1px); color: var(--text); border-color: var(--accent); }
+  .toolbar button.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  .toolbar button.danger { background: transparent; border: 1px solid var(--red); color: var(--red); }
+  .toolbar button.danger:hover { background: rgba(248,113,113,0.12); color: var(--red); }
+  .toolbar button.icon-only { padding: 8px 10px; min-width: 38px; justify-content: center; }
+  .toolbar button.ki-toggle {
+    background: transparent; border: 1px dashed var(--border); color: var(--muted);
+  }
+  .toolbar button.ki-toggle:hover { border-color: var(--accent); color: var(--text); border-style: solid; }
+  .toolbar button.ki-toggle.active {
+    background: linear-gradient(135deg, rgba(124,92,255,0.18), rgba(34,211,238,0.12));
+    border: 1px solid var(--accent); color: var(--text); border-style: solid;
+  }
+  .toolbar button.ki-toggle.active .ki-label {
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .ki-label { font-weight: 700; }
+  .status { margin-left: auto; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+  .dot.live { background: var(--green); box-shadow: 0 0 10px var(--green); animation: pulse 1.4s infinite; }
+  .dot.error { background: var(--red); }
+  @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(0.85); } }
+
+  .custom-select { position: relative; }
+  .custom-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; min-width: 180px; user-select: none; }
+  .custom-select-trigger .arrow { color: var(--muted); transition: transform .2s; }
+  .custom-select.open .custom-select-trigger .arrow { transform: rotate(180deg); }
+  .custom-select.open .custom-select-trigger { border-color: var(--accent); }
+  .custom-select-menu {
+    position: absolute; top: calc(100% + 6px); left: 0; min-width: 100%; max-height: 320px; overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow); padding: 6px; z-index: 50; display: none; animation: dropIn .15s ease;
+  }
+  @keyframes dropIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  .custom-select.open .custom-select-menu { display: block; }
+  .dropdown-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; transition: background .12s; }
+  .dropdown-item:hover { background: var(--hover); }
+  .dropdown-item.selected { background: rgba(124,92,255,0.15); color: var(--text); }
+  .dropdown-item .item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dropdown-item .item-meta { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+  .status-dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.6s infinite; }
+  .status-dot.offline { background: var(--muted); opacity: .6; }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; position: relative; overflow: hidden; transition: background .25s, border-color .25s; }
+  .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); opacity: .7; }
+  .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; }
+  .card .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+
+  .chart-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; margin-bottom: 16px; transition: background .25s, border-color .25s; }
+  .chart-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .chart-title { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; }
+  .chart-legend { font-size: 12px; color: var(--muted); display: flex; gap: 14px; }
+  .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+  canvas { width: 100%; height: 140px; display: block; }
+
+  .feed { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: background .25s, border-color .25s; }
+  .feed-row, .feed-header { display: grid; grid-template-columns: 100px 60px minmax(80px, 1fr) 90px 180px; align-items: center; gap: 8px; }
+  .feed-header { padding: 12px 18px; font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); border-bottom: 1px solid var(--border); background: var(--panel-2); position: sticky; top: 0; z-index: 2; }
+  .feed-scroll { max-height: 55vh; overflow-y: auto; }
+  .feed-row { padding: 9px 18px; border-bottom: 1px solid var(--grid); font-family: "SF Mono", Menlo, monospace; font-size: 13px; min-height: 40px; }
+  .feed-row.new { animation: flashIn 1.1s ease; }
+  @keyframes flashIn { 0% { background: rgba(124,92,255,0.35); opacity: 0; } 40% { background: rgba(124,92,255,0.15); opacity: 1; } 100% { background: transparent; } }
+  .feed-row:hover { background: var(--hover); }
+  .time { color: var(--accent-2); }
+  .second { color: var(--muted); }
+  .key { color: var(--text); background: rgba(124,92,255,0.12); border: 1px solid rgba(124,92,255,0.25); border-radius: 6px; padding: 2px 8px; display: inline-block; min-width: 36px; text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .key.special { background: rgba(34,211,238,0.1); border-color: rgba(34,211,238,0.3); color: var(--accent-2); }
+  .event { font-size: 11px; padding: 2px 8px; border-radius: 20px; text-align: center; display: inline-block; min-width: 60px; }
+  .event.press { background: rgba(52,211,153,0.15); color: var(--green); }
+  .event.release { background: rgba(248,113,113,0.15); color: var(--red); }
+  .macbook-cell { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+
+  .smart-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 16px; overflow: hidden; transition: background .25s, border-color .25s; }
+  .smart-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--panel-2); }
+  .smart-title { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; display: flex; align-items: center; gap: 8px; }
+  .smart-badge { font-size: 10px; padding: 2px 7px; border-radius: 10px; background: rgba(124,92,255,0.18); color: var(--accent); border: 1px solid rgba(124,92,255,0.3); text-transform: none; letter-spacing: 0; }
+  .smart-badge.beta { background: rgba(251,191,36,0.15); color: var(--yellow); border-color: rgba(251,191,36,0.3); }
+  .smart-hint { font-size: 11px; color: var(--muted); }
+  .smart-body { padding: 16px 18px; max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  .smart-block { background: var(--panel-2); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 10px; padding: 10px 14px; }
+  .smart-block.ai { border-left-color: var(--green); }
+  .smart-block.error { border-left-color: var(--red); }
+  .smart-block.pending { border-left-color: var(--yellow); opacity: .7; }
+  .smart-block.local { border-left-color: var(--accent-2); }
+  .smart-block-head { font-size: 11px; color: var(--muted); margin-bottom: 6px; font-family: "SF Mono", Menlo, monospace; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; }
+  .smart-text { font-family: "SF Mono", Menlo, monospace; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: var(--text); }
+  .smart-empty { padding: 24px; text-align: center; color: var(--muted); font-size: 13px; }
+  .ai-tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: rgba(52,211,153,0.15); color: var(--green); border: 1px solid rgba(52,211,153,0.3); margin-left: 6px; }
+  .err-tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid rgba(248,113,113,0.3); margin-left: 6px; }
+  .pending-tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: rgba(251,191,36,0.15); color: var(--yellow); border: 1px solid rgba(251,191,36,0.3); margin-left: 6px; }
+  .local-tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: rgba(34,211,238,0.15); color: var(--accent-2); border: 1px solid rgba(34,211,238,0.3); margin-left: 6px; }
+
+  .progress-wrap { padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--panel-2); display: none; }
+  .progress-wrap.show { display: block; }
+  .progress-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .progress-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 3px; width: 0%; transition: width .3s ease; }
+
+  .settings-back { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; z-index: 90; backdrop-filter: blur(3px); }
+  .settings-back.show { display: block; }
+  .settings-panel { position: fixed; top: 0; right: 0; bottom: 0; width: 360px; max-width: 92vw; background: var(--panel); border-left: 1px solid var(--border); box-shadow: -20px 0 60px rgba(0,0,0,0.4); transform: translateX(100%); transition: transform .28s cubic-bezier(.4,0,.2,1); z-index: 95; display: flex; flex-direction: column; overflow-y: auto; }
+  .settings-panel.show { transform: translateX(0); }
+  .settings-header { padding: 20px 22px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  .settings-header h2 { margin: 0; font-size: 18px; }
+  .settings-close { background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 6px; line-height: 1; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; }
+  .settings-close:hover { background: var(--hover); color: var(--text); }
+  .settings-body { padding: 8px 0 20px; }
+  .settings-section { padding: 16px 22px; border-bottom: 1px solid var(--border); }
+  .settings-section:last-child { border-bottom: none; }
+  .settings-section-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 12px; }
+  .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; }
+  .setting-row .setting-label { display: flex; flex-direction: column; gap: 2px; }
+  .setting-row .setting-name { font-size: 14px; }
+  .setting-row .setting-desc { font-size: 12px; color: var(--muted); }
+  .switch { position: relative; display: inline-block; width: 50px; height: 30px; flex-shrink: 0; cursor: pointer; }
+  .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .switch .slider { position: absolute; inset: 0; background: var(--border); border-radius: 30px; transition: background .22s; }
+  .switch .slider::before { content: ''; position: absolute; width: 24px; height: 24px; left: 3px; top: 3px; background: #fff; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.25); transition: transform .22s cubic-bezier(.4,0,.2,1); }
+  .switch input:checked + .slider { background: var(--accent); }
+  .switch input:checked + .slider::before { transform: translateX(20px); }
+  .switch.green input:checked + .slider { background: var(--green); }
+  .switch.red input:checked + .slider { background: var(--red); }
+
+  .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(4px); }
+  .modal-back.show { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 24px 28px; max-width: 420px; width: 90%; box-shadow: 0 30px 80px rgba(0,0,0,0.6); }
+  .modal h2 { margin: 0 0 10px; font-size: 20px; display: flex; align-items: center; gap: 8px; }
+  .modal h2 .icon { color: var(--red); }
+  .modal p { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 0 0 20px; }
+  .modal .danger-text { color: var(--red); font-weight: 600; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  .modal-actions button { padding: 9px 18px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); }
+  .modal-actions button.confirm { background: var(--red); border-color: var(--red); color: white; }
+  .modal-actions button.primary { background: linear-gradient(135deg, var(--accent), #5b41d6); border-color: transparent; color: white; }
+  .modal-actions button.primary:hover { opacity: .95; }
+
+  /* Fertig-Popup */
+  .result-summary { display: flex; flex-direction: column; gap: 10px; margin-bottom: 22px; }
+  .result-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel-2); }
+  .result-row .result-label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .result-row .result-value { font-size: 20px; font-weight: 700; }
+  .result-row.ok { border-left: 3px solid var(--green); }
+  .result-row.ok .result-value { color: var(--green); }
+  .result-row.local { border-left: 3px solid var(--accent-2); }
+  .result-row.local .result-value { color: var(--accent-2); }
+  .result-row.err { border-left: 3px solid var(--red); }
+  .result-row.err .result-value { color: var(--red); }
+
+  body.smart-mode #feedWrap { display: none; }
+  body:not(.smart-mode) #smartWrap { display: none; }
+</style>
+</head>
+<body>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></symbol>
+      <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"></path><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z"></path></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></symbol>
+    </defs>
+  </svg>
+
+  <h1>KeyLogs Live</h1>
+  <div class="sub">Realtime-Dashboard für deine Firebase-Datenbank</div>
+
+  <div class="toolbar">
+    <div class="custom-select" id="macbookSelect" data-value="">
+      <div class="custom-select-trigger" tabindex="0"><span class="trigger-label">Lade…</span><svg class="icon arrow"><use href="#i-chevron-down"/></svg></div>
+      <div class="custom-select-menu"></div>
+    </div>
+    <div class="custom-select" id="dateSelect" data-value="">
+      <div class="custom-select-trigger" tabindex="0"><span class="trigger-label">Lade…</span><svg class="icon arrow"><use href="#i-chevron-down"/></svg></div>
+      <div class="custom-select-menu"></div>
+    </div>
+    <input id="searchInput" placeholder="Taste suchen…" />
+    <button id="refreshBtn" class="ghost icon-only" title="Aktualisieren"><svg class="icon"><use href="#i-refresh"/></svg></button>
+    <button id="kiToggleBtn" class="ki-toggle" title="Intelligente Texterkennung ein-/ausschalten">
+      <svg class="icon"><use href="#i-sparkles"/></svg>
+      <span class="ki-label">KI-Text AN</span>
+    </button>
+    <button id="exportCsv" class="ghost" title="Als CSV exportieren"><svg class="icon"><use href="#i-download"/></svg> CSV</button>
+    <button id="exportJson" class="ghost" title="Als JSON exportieren"><svg class="icon"><use href="#i-download"/></svg> JSON</button>
+    <button id="clearBtn" class="danger icon-only" title="Alle Daten dieses Tages löschen"><svg class="icon"><use href="#i-trash"/></svg></button>
+    <button id="settingsBtn" class="ghost icon-only" title="Einstellungen"><svg class="icon"><use href="#i-settings"/></svg></button>
+    <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">Bereit</span></div>
+  </div>
+
+  <div class="stats">
+    <div class="card"><div class="label">Einträge</div><div class="value" id="statCount">0</div></div>
+    <div class="card"><div class="label">Tasten / Min</div><div class="value" id="statKpm">0</div></div>
+    <div class="card"><div class="label">Top-Taste</div><div class="value" id="statTopKey">–</div></div>
+    <div class="card"><div class="label">MacBooks</div><div class="value" id="statMacbooks">0</div></div>
+  </div>
+
+  <div class="chart-wrap">
+    <div class="chart-head">
+      <div class="chart-title">Tasten pro Minute (letzte 30 Min)</div>
+      <div class="chart-legend"><span><span class="legend-dot" style="background:var(--accent)"></span>Press</span><span><span class="legend-dot" style="background:var(--accent-2)"></span>Release</span></div>
+    </div>
+    <canvas id="chart"></canvas>
+  </div>
+
+  <div class="smart-wrap" id="smartWrap">
+    <div class="smart-head">
+      <div class="smart-title">
+        <svg class="icon"><use href="#i-sparkles"/></svg>
+        Erkannte Texte
+        <span class="smart-badge">KI</span>
+        <span class="smart-badge beta">Beta</span>
+      </div>
+      <div class="smart-hint">Jeder Block einzeln · 1 Request / 2 s</div>
+    </div>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-label"><span id="progressText">Rekonstruiere…</span><span id="progressEta"></span></div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+    <div class="smart-body" id="smartBody">
+      <div class="smart-empty">Aktiviere die intelligente Texterkennung über den Button oben.</div>
+    </div>
+  </div>
+
+  <div class="feed" id="feedWrap">
+    <div class="feed-header"><div>Uhrzeit</div><div>Sek.</div><div>Taste</div><div>Event</div><div>MacBook</div></div>
+    <div class="feed-scroll" id="feedBody"><div class="empty">Wähle ein MacBook und Datum …</div></div>
+  </div>
+
+  <div class="settings-back" id="settingsBack"></div>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="settings-header"><h2>Einstellungen</h2><button class="settings-close" id="settingsClose" title="Schließen"><svg class="icon icon-lg"><use href="#i-x"/></svg></button></div>
+    <div class="settings-body">
+      <div class="settings-section">
+        <div class="settings-section-title">Darstellung</div>
+        <div class="setting-row"><div class="setting-label"><span class="setting-name">Dark Mode</span><span class="setting-desc">Zwischen hell und dunkel wechseln</span></div><label class="switch"><input type="checkbox" id="toggleTheme"><span class="slider"></span></label></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">Live-Daten</div>
+        <div class="setting-row"><div class="setting-label"><span class="setting-name">Live aktualisieren</span><span class="setting-desc">Alle 2 Sekunden neue Einträge laden</span></div><label class="switch green"><input type="checkbox" id="toggleLive"><span class="slider"></span></label></div>
+      </div>
+      <div class="settings-section" id="filterSection">
+        <div class="settings-section-title">Anzeige-Filter</div>
+        <div class="setting-row"><div class="setting-label"><span class="setting-name">Press anzeigen</span><span class="setting-desc">Tastendrücke einblenden</span></div><label class="switch green"><input type="checkbox" id="togglePress"><span class="slider"></span></label></div>
+        <div class="setting-row"><div class="setting-label"><span class="setting-name">Release anzeigen</span><span class="setting-desc">Tastenloslassen einblenden</span></div><label class="switch red"><input type="checkbox" id="toggleRelease"><span class="slider"></span></label></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Löschen-Modal -->
+  <div class="modal-back" id="modalBack">
+    <div class="modal">
+      <h2><svg class="icon icon-lg"><use href="#i-alert"/></svg> Wirklich löschen?</h2>
+      <p>Alle Einträge von <span class="danger-text" id="modalTarget">–</span> werden <b>unwiderruflich</b> aus Firebase gelöscht.<br>Deine lokalen Log-Dateien in <code>~/Documents/KeyLogs/</code> bleiben unberührt.</p>
+      <div class="modal-actions"><button id="modalCancel">Abbrechen</button><button id="modalConfirm" class="confirm">Ja, löschen</button></div>
+    </div>
+  </div>
+
+  <!-- Fertig-Popup -->
+  <div class="modal-back" id="resultBack">
+    <div class="modal">
+      <h2><svg class="icon icon-lg" style="color:var(--green)"><use href="#i-check"/></svg> Rekonstruktion abgeschlossen</h2>
+      <div class="result-summary">
+        <div class="result-row ok">
+          <div class="result-label">Rekonstruierbar (KI)</div>
+          <div class="result-value" id="resOk">0</div>
+        </div>
+        <div class="result-row local">
+          <div class="result-label">Nicht rekonstruierbar</div>
+          <div class="result-value" id="resLocal">0</div>
+        </div>
+        <div class="result-row err" id="resErrRow" style="display:none">
+          <div class="result-label">Fehler</div>
+          <div class="result-value" id="resErr">0</div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="resultClose" class="primary">Fertig</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ============================================================
+// KONFIG
+// ============================================================
+const DB_URL  = "https://data-df966-default-rtdb.europe-west1.firebasedatabase.app";
+const GROQ_API_KEY = "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";
+const GROQ_MODEL = "openai/gpt-oss-20b";
+const POLL_MS = 2000;
+const ONLINE_THRESHOLD_MS = 5 * 60 * 1000;
+const AI_MIN_INTERVAL_MS = 2000;
+
+const SMART = {
+  pauseMs: 1800,
+  maxBlockMs: 90_000,
+  minTextLen: 2,
+  wordGapMs: 380,
+};
+
+const DICT_WORDS = `
+der die das den dem des ein eine einer eines einem einen kein keine meines deines seines
+und oder aber denn sondern doch wenn dann als wie so um zu zum zur mit ohne für gegen über unter
+vor nach bei aus von vom im in am an auf ab seit während wegen trotz statt
+ist bist sind seid war waren gewesen wird werden wurde wurden worden sein habe hast haben hat hatte hatten
+kann kannst können konnte konnten muss musst müssen musste mussten soll sollst sollen sollte sollten
+will willst wollen wollte wollten darf darfst dürfen durfte durften mag möchtest möchte möchten
+ich du er sie es wir ihr man mich dich ihn uns euch ihnen mir dir ihm ihr mein dein sein unser euer
+hier dort da dann jetzt heute gestern morgen immer nie oft manchmal selten bald schon noch nur
+sehr viel viele wenig wenige mehr weniger meist meistens ganz etwas nichts alles jedem jeden jede
+gut schlecht groß klein schnell langsam neu alt jung schön hässlich hell dunkel warm kalt heiß
+eins zwei drei vier fünf sechs sieben acht neun zehn zwanzig hundert tausend million
+januar februar märz april mai juni juli august september oktober november dezember
+montag dienstag mittwoch donnerstag freitag samstag sonntag
+stunde minuten sekunden tag woche monat jahr jahre heute morgen abend nacht mittag
+wasser feuer erde luft sonne mond sterne himmel meer berg tal wald baum blume gras tier hund katze
+maus vogel fisch pferd mensch mann frau kind kinder leute freund freunde familie mutter vater
+bruder schwester sohn tochter eltern großeltern
+haus wohnung zimmer tür fenster tisch stuhl bett küche bad schule arbeit büro straße stadt dorf
+land welt europa deutschland österreich schweiz englisch amerika
+computer laptop telefon handy bildschirm tastatur maus programm app internet netzwerk email
+buch zeitung film musik lied spiel sport fußball
+gehen geht gehe gehst kommen kommt kam komme sehen sieht sah sehe hören hört höre sprechen
+spricht sprach lesen liest las schreiben schreibt schrieb essen isst aß trinken trinkt trank
+schlafen schläft schlief arbeiten arbeitet arbeitete spielen spielt spielte lernen lernt lernte
+verstehen versteht verstand wissen weiß wusste denken denkt dachte fühlen fühlt fühlte
+machen macht machte tun tut tat geben gibt gab nehmen nimmt nahm finden findet fand
+suchen sucht suchte kaufen kauft kaufte bezahlen zahlt zahlte bleiben bleibt blieb
+fahren fährt fuhr fliegen fliegt flog laufen läuft lief rennen rennt rannte
+lieben liebt liebte hassen hasst hasste mögen mag mochte brauchen braucht brauchte
+danke bitte hallo tschüss auf wiedersehen guten morgen abend nacht tag ja nein vielleicht
+okay super toll klasse prima schade leider vielleicht sicher klar genau richtig falsch
+warum wieso weshalb deshalb darum weil ob dass obwohl damit
+wer was wann wo wie welche welcher welches warum
+the be to of and a in that have i it for not on with he as you do at this but his by from
+they we say her she or an will my one all would there their what so up out if about who get
+which go me when make can like time no just him know take people into year your good some
+could them see other than then now look only come its over think also back after use two how
+our work first well way even new want because any these give day most us
+is are was were been being am has had having does did doing
+hello world how thank thanks please good morning evening night bye goodbye yes maybe sure
+okay fine bad big small fast slow today yesterday tomorrow always never often sometimes love
+need want go come see hear speak read write eat drink sleep work play learn understand know
+think feel make do say tell ask help find give take put keep let begin seem leave call try
+show become move live believe hold bring happen write provide sit stand lose pay meet include
+continue set change lead understand watch follow stop create open walk win offer remember
+love consider appear buy wait serve die send expect build stay fall cut reach kill remain
+suggest raise pass sell require report decide pull
+computer laptop phone screen keyboard mouse program app internet network email
+book newspaper movie film music song game sport football
+house home room door window table chair bed kitchen bathroom school work office street city
+village country world europe germany austria switzerland english america
+water fire earth air sun moon stars sky sea mountain valley forest tree flower grass animal
+dog cat mouse bird fish horse human man woman child children people friend friends family
+mother father brother sister son daughter parents grandparents
+one two three four five six seven eight nine ten twenty hundred thousand million
+january february march april may june july august september october november december
+monday tuesday wednesday thursday friday saturday sunday
+hour minute second day week month year morning evening night noon
+go goes went gone come comes came see sees saw hear hears heard speak speaks spoke
+read reads write writes wrote eat eats ate drink drinks drank sleep sleeps slept
+work works worked play plays played learn learns learned understand understands understood
+know knows knew think thinks thought feel feels felt make makes made do does did
+give gives gave take takes took find finds found buy buys bought pay pays paid
+stay stays stayed drive drives drove fly flies flew run runs ran walk walks walked
+love loves loved need needs needed want wants wanted
+thanks hello bye goodbye welcome sorry excuse
+`;
+
+const LOCAL_DICT = new Set();
+const LOCAL_DICT_NORMALIZED = new Set();
+
+function normalizeWord(w) {
+  return w.toLowerCase()
+    .replace(/ä/g, "a").replace(/ö/g, "o").replace(/ü/g, "u").replace(/ß/g, "ss");
+}
+
+(function buildDict() {
+  const words = DICT_WORDS.split(/\s+/).map(w => w.trim()).filter(Boolean);
+  for (const w of words) {
+    LOCAL_DICT.add(w.toLowerCase());
+    LOCAL_DICT_NORMALIZED.add(normalizeWord(w));
+  }
+})();
+
+const LS_KEYS = {
+  theme: "keylogs_theme", live: "keylogs_live", press: "keylogs_showPress",
+  release: "keylogs_showRelease", smart: "keylogs_smartMode",
+};
+
+let allRows = [], seenIds = new Set(), liveOn = false, liveTimer = null;
+let lastKey = null, showPress = true, showRelease = true, smartMode = false;
+let macbookList = [], macbookMeta = {};
+let smartCache = [];
+let isProcessing = false;
+let lastAiRequestAt = 0;
+let lastError = null;
+let processedKeys = new Set();
+
+const $ = (id) => document.getElementById(id);
+
+// ============================================================
+// STORAGE / THEME / FIREBASE
+// ============================================================
+function lsGet(k, f) { try { const v = localStorage.getItem(k); return v === null ? f : JSON.parse(v); } catch { return f; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+
+function applyTheme(theme) {
+  document.documentElement.classList.toggle("light", theme === "light");
+  $("toggleTheme").checked = theme === "light";
+  requestAnimationFrame(drawChart);
+}
+function onThemeToggle() { const n = $("toggleTheme").checked ? "light" : "dark"; lsSet(LS_KEYS.theme, n); applyTheme(n); }
+
+async function fbGet(path) { const r = await fetch(`${DB_URL}/${path}.json`); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }
+
+async function loadOnlineStatus() {
+  const statusData = await fbGet("status").catch(() => null);
+  const logsData   = await fbGet("logs").catch(() => null);
+  const lastFromLogs = {};
+  if (logsData) for (const [name, dates] of Object.entries(logsData)) {
+    let max = 0;
+    for (const day of Object.values(dates || {})) for (const e of Object.values(day || {})) if (e?.timestamp) { const t = new Date(e.timestamp).getTime(); if (t > max) max = t; }
+    if (max) lastFromLogs[name] = max;
+  }
+  const names = new Set([...Object.keys(logsData || {}), ...Object.keys(statusData || {})]);
+  macbookMeta = {}; const now = Date.now();
+  for (const n of names) {
+    const s = statusData?.[n];
+    const lastSeen = (s?.lastSeen && Number(s.lastSeen)) || lastFromLogs[n] || 0;
+    macbookMeta[n] = { lastSeen, online: (s?.online === true) || (lastSeen && (now - lastSeen) < ONLINE_THRESHOLD_MS) };
+  }
+  macbookList = Object.keys(macbookMeta).sort();
+}
+function formatLastSeen(ts) { if (!ts) return "nie"; const m = Math.floor((Date.now()-ts)/60000); if (m<1) return "gerade eben"; if (m<60) return `vor ${m} Min`; const h=Math.floor(m/60); if(h<24) return `vor ${h} Std`; const d=Math.floor(h/24); return `vor ${d} Tag${d===1?"":"en"}`; }
+function statusLabel(m) { return m?.online ? "online" : `zuletzt ${formatLastSeen(m?.lastSeen || 0)}`; }
+
+function setupDropdown(root, onSelect) {
+  const trigger = root.querySelector(".custom-select-trigger"), menu = root.querySelector(".custom-select-menu"), label = trigger.querySelector(".trigger-label");
+  function toggle(force) { const open = force !== undefined ? force : !root.classList.contains("open"); document.querySelectorAll(".custom-select.open").forEach(el => { if (el !== root) el.classList.remove("open"); }); root.classList.toggle("open", open); }
+  trigger.addEventListener("click", e => { e.stopPropagation(); toggle(); });
+  trigger.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } if (e.key === "Escape") toggle(false); });
+  document.addEventListener("click", () => toggle(false));
+  return {
+    setLabel(t) { label.textContent = t; },
+    setItems(items, cur, renderMeta) {
+      menu.innerHTML = "";
+      if (!items.length) { const d = document.createElement("div"); d.className = "dropdown-item"; d.textContent = "– keine Daten –"; menu.appendChild(d); return; }
+      for (const it of items) {
+        const val = typeof it === "string" ? it : it.value, lbl = typeof it === "string" ? it : it.label;
+        const el = document.createElement("div"); el.className = "dropdown-item" + (val === cur ? " selected" : ""); el.dataset.value = val;
+        el.innerHTML = `<div class="item-label">${escapeHtml(lbl)}</div>${renderMeta ? `<div class="item-meta">${renderMeta(val)}</div>` : ""}`;
+        el.addEventListener("click", () => { root.dataset.value = val; label.textContent = lbl; menu.querySelectorAll(".dropdown-item").forEach(x => x.classList.remove("selected")); el.classList.add("selected"); toggle(false); onSelect(val); });
+        menu.appendChild(el);
+      }
+    },
+    getValue() { return root.dataset.value; },
+    close() { toggle(false); }
+  };
+}
+
+let macbookDropdown, dateDropdown;
+function renderMacbookMeta(name) { const m = macbookMeta[name] || {}; return `<span class="status-dot ${m.online ? "online" : "offline"}"></span><span>${escapeHtml(statusLabel(m))}</span>`; }
+
+async function loadMacbooks() {
+  try {
+    setStatus("Lade MacBooks…"); await loadOnlineStatus(); $("statMacbooks").textContent = macbookList.length;
+    if (!macbookList.length) { macbookDropdown.setLabel("– keine Daten –"); macbookDropdown.setItems([], "", null); setStatus("Keine Daten", "error"); return; }
+    macbookDropdown.setItems(macbookList, macbookList[0], renderMacbookMeta); macbookDropdown.setLabel(macbookList[0]); macbookDropdown.close(); $("macbookSelect").dataset.value = macbookList[0];
+    await loadDates(macbookList[0]); setStatus("Bereit");
+  } catch (e) { console.error(e); setStatus("Fehler beim Laden", "error"); }
+}
+
+async function loadDates(macbook) {
+  dateDropdown.setLabel("Lade…"); dateDropdown.setItems([], "", null);
+  const data = await fbGet(`logs/${encodeURIComponent(macbook)}`);
+  if (!data) { dateDropdown.setLabel("– keine Daten –"); allRows = []; smartCache = []; processedKeys.clear(); renderFeed(); renderSmart(); updateStats(); drawChart(); return; }
+  const dates = Object.keys(data).sort().reverse();
+  dateDropdown.setItems(dates, dates[0], null); dateDropdown.setLabel(dates[0]); dateDropdown.close(); $("dateSelect").dataset.value = dates[0];
+  lastKey = null;
+  processedKeys.clear();
+  smartCache = [];
+  lastError = null;
+  await loadLogs();
+}
+
+async function loadLogs() {
+  const macbook = $("macbookSelect").dataset.value, date = $("dateSelect").dataset.value;
+  if (!macbook || !date) return;
+  try {
+    const data = await fbGet(`logs/${encodeURIComponent(macbook)}/${date}`);
+    const rows = data ? Object.entries(data).map(([id, v]) => ({ id, ...v })) : [];
+    rows.sort((a, b) => (a.timestamp || a.time || "").localeCompare(b.timestamp || b.time || ""));
+    const newIds = new Set(); for (const r of rows) { if (!seenIds.has(r.id)) newIds.add(r.id); seenIds.add(r.id); }
+    const curKey = `${macbook}/${date}`; if (lastKey !== curKey) { seenIds = new Set(rows.map(r => r.id)); lastKey = curKey; newIds.clear(); processedKeys.clear(); smartCache = []; }
+    allRows = rows;
+    renderFeed(newIds); renderSmart(); updateStats(); drawChart();
+    setStatus(`Aktualisiert · ${new Date().toLocaleTimeString()}`, liveOn ? "live" : "");
+    // WICHTIG: kein automatischer processSmart()-Aufruf mehr hier.
+    // Der Lauf startet nur einmal beim Aktivieren des KI-Buttons bzw. manuellem Refresh.
+  } catch (e) { console.error(e); setStatus("Fehler beim Laden", "error"); }
+}
+
+// ============================================================
+// FILTER / FEED / STATS / CHART
+// ============================================================
+function getFilteredRows() {
+  const q = $("searchInput").value.trim().toLowerCase();
+  return allRows.filter(r => {
+    if (r.event === "press" && !showPress) return false;
+    if (r.event === "release" && !showRelease) return false;
+    if (q && !String(r.key ?? "").toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+function renderFeed(newIds = new Set()) {
+  const body = $("feedBody"); const rows = getFilteredRows();
+  if (!rows.length) { body.innerHTML = "<div class='empty'>Keine Einträge.</div>"; return; }
+  body.innerHTML = [...rows].reverse().map(r => {
+    const isSpecial = r.key && r.key.length > 1 && !r.key.startsWith("'");
+    return `<div class="feed-row${newIds.has(r.id) ? " new" : ""}"><div class="time">${escapeHtml(r.time ?? "–")}</div><div class="second">${r.second ?? "–"}</div><div><span class="key ${isSpecial ? 'special' : ''}">${escapeHtml(r.key ?? "?")}</span></div><div><span class="event ${r.event ?? "press"}">${r.event ?? "press"}</span></div><div class="macbook-cell">${escapeHtml(r.macbook ?? "–")}</div></div>`;
+  }).join("");
+}
+
+function updateStats() {
+  const rows = getFilteredRows(); $("statCount").textContent = rows.length;
+  const oneMin = Date.now() - 60_000; $("statKpm").textContent = rows.filter(r => r.timestamp && new Date(r.timestamp).getTime() >= oneMin).length;
+  const counts = {}; for (const r of rows) { if (r.event && r.event !== "press") continue; counts[r.key] = (counts[r.key] || 0) + 1; }
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]; $("statTopKey").textContent = top ? `${top[0]} (${top[1]})` : "–";
+}
+
+function drawChart() {
+  const canvas = $("chart"); const dpr = window.devicePixelRatio || 1; const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return;
+  canvas.width = w * dpr; canvas.height = h * dpr; const ctx = canvas.getContext("2d"); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, w, h);
+  const minutes = 30; const now = new Date(); now.setSeconds(0, 0); const buckets = [];
+  for (let i = minutes - 1; i >= 0; i--) { const d = new Date(now.getTime() - i * 60_000); buckets.push({ label: `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`, press: 0, release: 0 }); }
+  const nowMs = now.getTime();
+  for (const r of allRows) { if (!r.timestamp) continue; const t = new Date(r.timestamp).getTime(); const diff = Math.floor((nowMs - t) / 60_000); if (diff < 0 || diff >= minutes) continue; const idx = minutes - 1 - diff; if (r.event === "release") buckets[idx].release++; else buckets[idx].press++; }
+  const max = Math.max(1, ...buckets.map(b => b.press + b.release)); const padL = 30, padR = 10, padT = 10, padB = 22; const cw = w - padL - padR, ch = h - padT - padB;
+  const css = getComputedStyle(document.documentElement); const grid = css.getPropertyValue("--grid").trim(), muted = css.getPropertyValue("--muted").trim();
+  ctx.strokeStyle = grid; ctx.lineWidth = 1; for (let i = 0; i <= 3; i++) { const y = padT + (ch / 3) * i; ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke(); }
+  ctx.fillStyle = muted; ctx.font = "10px -apple-system, sans-serif"; ctx.textAlign = "right"; ctx.fillText(max, padL - 6, padT + 10); ctx.fillText("0", padL - 6, padT + ch);
+  const bw = cw / minutes;
+  for (let i = 0; i < minutes; i++) {
+    const b = buckets[i]; if (b.press + b.release === 0) continue; const x = padL + i * bw + bw * 0.15, ww = bw * 0.7;
+    const ph = showPress ? (b.press / max) * ch : 0, rh = showRelease ? (b.release / max) * ch : 0;
+    if (showPress) { const g = ctx.createLinearGradient(0, padT + ch - ph, 0, padT + ch); g.addColorStop(0, "#7c5cff"); g.addColorStop(1, "#5b41d6"); ctx.fillStyle = g; ctx.fillRect(x, padT + ch - ph, ww, ph); }
+    if (showRelease) { const g = ctx.createLinearGradient(0, padT + ch - ph - rh, 0, padT + ch - ph); g.addColorStop(0, "#22d3ee"); g.addColorStop(1, "#0891b2"); ctx.fillStyle = g; ctx.fillRect(x, padT + ch - ph - rh, ww, rh); }
+  }
+  ctx.fillStyle = muted; ctx.textAlign = "center"; for (let i = 0; i < minutes; i += 5) { const x = padL + i * bw + bw / 2; ctx.fillText(buckets[i].label, x, h - 6); }
+}
+
+// ============================================================
+// SMART: Rohblöcke / lokale Segmentierung
+// ============================================================
+function buildRawBlocks(rows) {
+  const presses = rows.filter(r => (r.event ?? "press") === "press" && r.timestamp).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  const blocks = []; let cur = null, lastTs = 0;
+  const flush = () => { if (cur && cur.chars.length >= SMART.minTextLen) blocks.push(cur); cur = null; };
+  for (const r of presses) {
+    const ts = new Date(r.timestamp).getTime(); const key = String(r.key ?? "");
+    if (cur && (ts - lastTs > SMART.pauseMs || ts - cur.start > SMART.maxBlockMs)) flush();
+    if (!cur) cur = { start: ts, end: ts, chars: [] };
+    lastTs = ts; cur.end = ts;
+    if (key.startsWith("Key.")) {
+      const code = key.slice(4);
+      if (code === "space") cur.chars.push({ ch: " ", ts, special: false });
+      else if (code === "enter" || code === "return") { cur.chars.push({ ch: "\n", ts, special: false }); flush(); }
+      else if (code === "tab") cur.chars.push({ ch: "\t", ts, special: false });
+      else if (code === "backspace" || code === "delete") { if (cur.chars.length) cur.chars.pop(); }
+      else if (code === "esc" || code === "escape") flush();
+      else cur.chars.push({ ch: `[${code.toUpperCase()}]`, ts, special: true });
+    } else {
+      const ch = key.replace(/^'+|'+$/g, ""); if (ch.length === 1) cur.chars.push({ ch, ts, special: false }); else cur.chars.push({ ch: `[${ch}]`, ts, special: true });
+    }
+  }
+  flush(); return blocks;
+}
+
+function localSegment(text) {
+  if (!text) return "";
+  if (/\s/.test(text)) {
+    return text.replace(/\s+/g, " ").trim()
+      .replace(/(^|\s)([a-zäöü])/g, (m, p, c) => p + c.toUpperCase());
+  }
+  const n = text.length;
+  const INF = 1e9;
+  const dp = new Array(n + 1).fill(INF); const prev = new Array(n + 1).fill(-1); dp[0] = 0;
+  const maxWordLen = 25;
+  for (let i = 1; i <= n; i++) {
+    for (let j = Math.max(0, i - maxWordLen); j < i; j++) {
+      const slice = text.slice(j, i);
+      const norm = normalizeWord(slice);
+      if (LOCAL_DICT_NORMALIZED.has(norm)) {
+        const lenPenalty = Math.max(0, slice.length - 12) * 0.05;
+        const cost = dp[j] + 1 + lenPenalty;
+        if (cost < dp[i]) { dp[i] = cost; prev[i] = j; }
+      }
+    }
+    const singleCost = dp[i - 1] + 3;
+    if (singleCost < dp[i]) { dp[i] = singleCost; prev[i] = i - 1; }
+  }
+  const parts = []; let i = n;
+  while (i > 0) { const j = prev[i]; parts.push(text.slice(j, i)); i = j; }
+  parts.reverse();
+  const merged = [];
+  for (const p of parts) {
+    if (p.length === 1 && merged.length && merged[merged.length - 1].length > 1) merged[merged.length - 1] += p;
+    else merged.push(p);
+  }
+  const result = merged.map((w, idx) => {
+    if (w.length === 0) return w;
+    const norm = normalizeWord(w);
+    if (idx === 0 && LOCAL_DICT_NORMALIZED.has(norm)) return w[0].toUpperCase() + w.slice(1);
+    return w;
+  });
+  return result.join(" ").trim();
+}
+
+// ============================================================
+// SMART: KI – ein Block pro Request
+// ============================================================
+async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function reconstructOne(rawText, langHint) {
+  const now = Date.now();
+  const wait = Math.max(0, AI_MIN_INTERVAL_MS - (now - lastAiRequestAt));
+  if (wait > 0) await sleep(wait);
+  lastAiRequestAt = Date.now();
+
+  const systemPrompt = `Du bist ein Rechtschreib- und Tippfehler-Korrektur-Assistent. Du bekommst EINEN einzelnen Satz oder Satzteil, der aus Tastendrücken entstanden ist (ohne verlässliche Leerzeichen, möglicherweise mit Sonderzeichen-Tokens wie [SHIFT] oder [CMD]). Rekonstruiere daraus den wahrscheinlichsten lesbaren Satz auf Deutsch oder Englisch. Korrigiere Tippfehler, füge Leerzeichen und Satzzeichen ein. Antworte AUSSCHLIESSLICH mit dem korrigierten Satz – keine Erklärungen, keine Anführungszeichen, keine Nummerierung. Wenn der Text nicht sinnvoll rekonstruierbar ist, antworte exakt mit: NICHT_REKONSTRUIERBAR`;
+
+  const body = {
+    model: GROQ_MODEL,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: rawText }
+    ],
+    temperature: 0.1,
+    max_tokens: 200
+  };
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  if (res.status === 429) {
+    const retryAfter = parseFloat(res.headers.get("retry-after") || "5");
+    const err = new Error(`Rate Limit (429). Retry nach ${retryAfter}s.`);
+    err.retryAfter = retryAfter;
+    throw err;
+  }
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Groq ${res.status}: ${errText.slice(0, 120)}`);
+  }
+  const data = await res.json();
+  let answer = (data.choices?.[0]?.message?.content || "").trim();
+  answer = answer.replace(/^["'`]+|["'`]+$/g, "").trim();
+  return answer;
+}
+
+function guessLanguage(text) {
+  const t = text.toLowerCase();
+  if (/[äöüß]/.test(t) || /\b(und|ist|nicht|ich|du|wir|das|der|die)\b/.test(t)) return "de";
+  return "en";
+}
+
+function blockKey(b) { return `${b.start}|${b.end}|${b.rawText}`; }
+
+// ============================================================
+// SMART: Orchestrierung – einmalig, danach fertig
+// ============================================================
+function updateProgress(percent, label, eta) {
+  $("progressWrap").classList.add("show");
+  $("progressFill").style.width = `${percent}%`;
+  $("progressText").textContent = label;
+  $("progressEta").textContent = eta || "";
+}
+function hideProgress() { $("progressWrap").classList.remove("show"); $("progressFill").style.width = "0%"; }
+
+function showResultPopup(ok, local, err) {
+  $("resOk").textContent = ok;
+  $("resLocal").textContent = local;
+  if (err > 0) { $("resErrRow").style.display = "flex"; $("resErr").textContent = err; }
+  else { $("resErrRow").style.display = "none"; }
+  $("resultBack").classList.add("show");
+}
+function closeResultPopup() { $("resultBack").classList.remove("show"); }
+
+async function processSmart() {
+  if (isProcessing) return;
+  isProcessing = true;
+  lastError = null;
+
+  const rows = getFilteredRows();
+  const rawBlocks = buildRawBlocks(rows);
+  if (!rawBlocks.length) { isProcessing = false; renderSmart(); hideProgress(); return; }
+
+  const cacheByKey = new Map(smartCache.map(b => [b.key, b]));
+
+  const localBlocks = rawBlocks.map(b => {
+    const rawText = b.chars.map(c => c.ch).join("").trim();
+    const key = blockKey({ start: b.start, end: b.end, rawText });
+    const existing = cacheByKey.get(key);
+    return { start: b.start, end: b.end, keys: b.chars.length, rawText, localText: localSegment(rawText), key, existing };
+  });
+
+  const pending = localBlocks.filter(b => {
+    if (b.existing && b.existing.status === "ok") return false;
+    if (processedKeys.has(b.key)) return false;
+    return true;
+  });
+
+  smartCache = localBlocks.map(b => {
+    if (b.existing) return b.existing;
+    return { key: b.key, start: b.start, end: b.end, keys: b.keys, rawText: b.rawText, localText: b.localText, aiText: null, usedAI: false, status: "pending" };
+  });
+  renderSmart();
+
+  if (!pending.length) {
+    updateProgress(100, "Alles aktuell", "");
+    setTimeout(hideProgress, 500);
+    isProcessing = false;
+    return;
+  }
+
+  const total = pending.length;
+  let done = 0;
+  const startTime = Date.now();
+  const idxByKey = new Map(smartCache.map((b, i) => [b.key, i]));
+
+  for (const b of pending) {
+    const pct = Math.round((done / total) * 95);
+    const elapsed = (Date.now() - startTime) / 1000;
+    const avg = done > 0 ? elapsed / done : 2.5;
+    const remaining = Math.max(0, Math.ceil((total - done) * avg));
+    updateProgress(pct, `KI korrigiert Block ${done + 1}/${total}…`, `~${remaining}s`);
+
+    const langHint = guessLanguage(b.localText);
+    let retryCount = 0, success = false, lastBatchError = null;
+
+    while (!success && retryCount < 2) {
+      try {
+        const answer = await reconstructOne(b.localText, langHint);
+        const idx = idxByKey.get(b.key);
+        if (idx !== undefined && smartCache[idx]) {
+          if (!answer || /^NICHT_REKONSTRUIERBAR$/i.test(answer)) {
+            smartCache[idx].status = "local";
+            smartCache[idx].aiText = null;
+            smartCache[idx].usedAI = false;
+            smartCache[idx].notReconstructable = true;
+          } else {
+            smartCache[idx].aiText = answer;
+            smartCache[idx].usedAI = true;
+            smartCache[idx].status = "ok";
+            smartCache[idx].notReconstructable = false;
+            processedKeys.add(b.key);
+          }
+          smartCache[idx].error = null;
+        }
+        success = true;
+      } catch (e) {
+        lastBatchError = e;
+        if (e.retryAfter) {
+          updateProgress(pct, `Rate Limit – warte ${e.retryAfter}s…`, "");
+          await sleep(e.retryAfter * 1000);
+          retryCount++;
+        } else {
+          break;
+        }
+      }
+    }
+
+    if (!success) {
+      const idx = idxByKey.get(b.key);
+      if (idx !== undefined && smartCache[idx]) {
+        smartCache[idx].status = "error";
+        smartCache[idx].error = lastBatchError?.message || "Unbekannter Fehler";
+      }
+      lastError = lastBatchError;
+    }
+    renderSmart();
+    done++;
+  }
+
+  updateProgress(100, "Fertig", "");
+  setTimeout(hideProgress, 800);
+  isProcessing = false;
+  renderSmart();
+
+  // Zähler für Popup berechnen
+  let okCount = 0, localCount = 0, errCount = 0;
+  for (const b of smartCache) {
+    if (b.status === "ok" && b.aiText) okCount++;
+    else if (b.status === "error") errCount++;
+    else if (b.status === "local" || b.notReconstructable) localCount++;
+  }
+  showResultPopup(okCount, localCount, errCount);
+}
+
+// ============================================================
+// SMART: Rendern
+// ============================================================
+function renderSmart() {
+  if (!smartMode) return;
+  const body = $("smartBody");
+  if (!smartCache.length) {
+    body.innerHTML = `<div class="smart-empty">${isProcessing ? "Rekonstruiere…" : "Noch keine Texte erkannt. Drücke den KI-Button, um zu starten."}</div>`;
+    return;
+  }
+  const sorted = [...smartCache].reverse();
+  body.innerHTML = sorted.map(b => {
+    const start = new Date(b.start).toLocaleTimeString();
+    const end = new Date(b.end).toLocaleTimeString();
+    const dur = Math.max(1, Math.round((b.end - b.start) / 1000));
+
+    let displayText, tag, blockClass;
+    if (b.status === "ok" && b.aiText) {
+      displayText = b.aiText;
+      tag = `<span class="ai-tag">KI</span>`;
+      blockClass = "ai";
+    } else if (b.status === "error") {
+      displayText = b.localText || b.rawText || "–";
+      tag = `<span class="err-tag">Fehler</span>`;
+      blockClass = "error";
+    } else if (b.status === "local" || b.notReconstructable) {
+      displayText = (b.localText || b.rawText || "–") + " (nicht rekonstruierbar)";
+      tag = `<span class="local-tag">Lokal</span>`;
+      blockClass = "local";
+    } else {
+      displayText = b.localText || b.rawText || "–";
+      tag = `<span class="pending-tag">wartet…</span>`;
+      blockClass = "pending";
+    }
+
+    const errInfo = b.error ? `<div style="color:var(--red);font-size:10px;margin-top:4px">${escapeHtml(b.error.slice(0, 100))}</div>` : "";
+    return `<div class="smart-block ${blockClass}">
+      <div class="smart-block-head"><span>${start} – ${end}</span><span>${b.keys} Tasten · ${dur}s ${tag}</span></div>
+      <div class="smart-text">${escapeHtml(displayText)}</div>
+      ${errInfo}
+    </div>`;
+  }).join("");
+
+  if (lastError && !isProcessing) {
+    const errBanner = `<div class="smart-block error" style="margin-bottom:10px">
+      <div class="smart-block-head"><span>Hinweis</span><span><span class="err-tag">Fehler</span></span></div>
+      <div class="smart-text" style="font-size:12px">${escapeHtml(lastError.message || "Unbekannter Fehler")}</div>
+    </div>`;
+    body.insertAdjacentHTML("afterbegin", errBanner);
+  }
+}
+
+// ============================================================
+// SMART MODE + Button
+// ============================================================
+function updateKiButton() {
+  const btn = $("kiToggleBtn");
+  const label = btn.querySelector(".ki-label");
+  if (smartMode) {
+    btn.classList.add("active");
+    label.textContent = "KI-Text AN";
+    btn.title = "Intelligente Texterkennung ist aktiv – klicken zum Ausschalten";
+  } else {
+    btn.classList.remove("active");
+    label.textContent = "KI-Text AUS";
+    btn.title = "Intelligente Texterkennung ist aus – klicken zum Einschalten";
+  }
+}
+
+function applySmartMode() {
+  document.body.classList.toggle("smart-mode", smartMode);
+  lsSet(LS_KEYS.smart, smartMode);
+  updateKiButton();
+  // Kein automatischer Lauf mehr. Nur Anzeige umschalten.
+  renderSmart();
+}
+
+function onKiToggle() {
+  smartMode = !smartMode;
+  applySmartMode();
+  // Wenn eingeschaltet und noch nichts verarbeitet wurde -> einmal starten
+  if (smartMode && !isProcessing && smartCache.length === 0 && allRows.length) {
+    processSmart();
+  }
+}
+
+// ============================================================
+// PRESS / RELEASE / LIVE / SETTINGS
+// ============================================================
+function applyToggles() {
+  $("togglePress").checked = showPress; $("toggleRelease").checked = showRelease;
+  if (!showPress && !showRelease) { showPress = showRelease = true; $("togglePress").checked = $("toggleRelease").checked = true; }
+  lsSet(LS_KEYS.press, showPress); lsSet(LS_KEYS.release, showRelease);
+  renderFeed(); renderSmart(); updateStats(); drawChart();
+}
+function onPressToggle() { showPress = $("togglePress").checked; if (!showPress && !showRelease) showRelease = true; applyToggles(); }
+function onReleaseToggle() { showRelease = $("toggleRelease").checked; if (!showPress && !showRelease) showPress = true; applyToggles(); }
+
+function setLive(on) {
+  liveOn = on; lsSet(LS_KEYS.live, on); $("toggleLive").checked = on;
+  if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+  if (on) { liveTimer = setInterval(loadLogs, POLL_MS); setStatus("Live aktiv", "live"); loadLogs(); }
+  else setStatus("Live gestoppt");
+}
+
+function openSettings() { $("settingsBack").classList.add("show"); $("settingsPanel").classList.add("show"); }
+function closeSettings() { $("settingsBack").classList.remove("show"); $("settingsPanel").classList.remove("show"); }
+
+function setStatus(text, type = "") { $("statusText").textContent = text; $("statusDot").className = "dot" + (type ? " " + type : ""); }
+function escapeHtml(s) { return String(s).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"); }
+
+// Export
+function exportCsv() {
+  const rows = getFilteredRows(); if (!rows.length) return;
+  if (smartMode && smartCache.length) {
+    const header = "start,end,text,source,status";
+    const lines = smartCache.map(b => {
+      const text = b.status === "ok" && b.aiText ? b.aiText : (b.localText || b.rawText) + (b.notReconstructable ? " (nicht rekonstruierbar)" : "");
+      return `"${new Date(b.start).toISOString()}","${new Date(b.end).toISOString()}","${text.replaceAll('"', '""')}","${b.usedAI ? "ai" : "local"}","${b.status}"`;
+    });
+    download([header, ...lines].join("\n"), `keylogs_smart_${Date.now()}.csv`, "text/csv"); return;
+  }
+  const headers = ["timestamp","time","second","key","event","macbook"];
+  download([headers.join(","), ...rows.map(r => headers.map(h => `"${String(r[h] ?? "").replaceAll('"','""')}"`).join(","))].join("\n"), `keylogs_${Date.now()}.csv`, "text/csv");
+}
+function exportJson() {
+  const rows = getFilteredRows(); if (!rows.length) return;
+  if (smartMode && smartCache.length) {
+    download(JSON.stringify(smartCache.map(b => ({
+      start: new Date(b.start).toISOString(),
+      end: new Date(b.end).toISOString(),
+      text: b.status === "ok" && b.aiText ? b.aiText : (b.localText || b.rawText),
+      notReconstructable: !!b.notReconstructable,
+      source: b.usedAI ? "ai" : "local",
+      status: b.status
+    })), null, 2), `keylogs_smart_${Date.now()}.json`, "application/json"); return;
+  }
+  download(JSON.stringify(rows, null, 2), `keylogs_${Date.now()}.json`, "application/json");
+}
+function download(content, filename, mime) { const blob = new Blob([content], { type: mime }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url); }
+
+function openClearModal() { const m = $("macbookSelect").dataset.value, d = $("dateSelect").dataset.value; if (!m || !d) return; $("modalTarget").textContent = `${m} / ${d}`; $("modalBack").classList.add("show"); }
+function closeClearModal() { $("modalBack").classList.remove("show"); }
+async function confirmClear() {
+  const m = $("macbookSelect").dataset.value, d = $("dateSelect").dataset.value; if (!m || !d) return;
+  closeClearModal(); setStatus("Lösche…");
+  try { const res = await fetch(`${DB_URL}/logs/${encodeURIComponent(m)}/${d}.json`, { method: "DELETE" }); if (!res.ok) throw new Error(); allRows = []; seenIds.clear(); smartCache = []; processedKeys.clear(); lastError = null; renderFeed(); renderSmart(); updateStats(); drawChart(); setStatus("Gelöscht", "live"); setTimeout(() => setStatus("Bereit"), 2000); await loadDates(m); }
+  catch (e) { setStatus("Löschen fehlgeschlagen", "error"); }
+}
+
+// ============================================================
+// EVENTS & INIT
+// ============================================================
+$("refreshBtn").addEventListener("click", () => {
+  // Manueller Refresh: lädt nur Logs neu. Startet KEINE neue KI-Verarbeitung.
+  loadLogs();
+});
+$("kiToggleBtn").addEventListener("click", onKiToggle);
+$("exportCsv").addEventListener("click", exportCsv);
+$("exportJson").addEventListener("click", exportJson);
+$("clearBtn").addEventListener("click", openClearModal);
+$("modalCancel").addEventListener("click", closeClearModal);
+$("modalConfirm").addEventListener("click", confirmClear);
+$("settingsBtn").addEventListener("click", openSettings);
+$("settingsClose").addEventListener("click", closeSettings);
+$("settingsBack").addEventListener("click", closeSettings);
+$("resultClose").addEventListener("click", closeResultPopup);
+$("resultBack").addEventListener("click", (e) => { if (e.target === $("resultBack")) closeResultPopup(); });
+$("toggleTheme").addEventListener("change", onThemeToggle);
+$("toggleLive").addEventListener("change", () => setLive($("toggleLive").checked));
+$("togglePress").addEventListener("change", onPressToggle);
+$("toggleRelease").addEventListener("change", onReleaseToggle);
+$("searchInput").addEventListener("input", () => { renderFeed(); if (!smartMode) updateStats(); });
+window.addEventListener("resize", drawChart);
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeClearModal(); closeSettings(); closeResultPopup(); } });
+
+function init() {
+  applyTheme(lsGet(LS_KEYS.theme, "dark"));
+  showPress = lsGet(LS_KEYS.press, true); showRelease = lsGet(LS_KEYS.release, true); applyToggles();
+  smartMode = lsGet(LS_KEYS.smart, false); applySmartMode();
+  const liveDefault = lsGet(LS_KEYS.live, true);
+  macbookDropdown = setupDropdown($("macbookSelect"), () => loadDates($("macbookSelect").dataset.value));
+  dateDropdown = setupDropdown($("dateSelect"), () => { lastKey = null; processedKeys.clear(); smartCache = []; lastError = null; loadLogs(); });
+  loadMacbooks().then(() => setLive(liveDefault));
+  setInterval(async () => { if (!liveOn) return; try { await loadOnlineStatus(); macbookDropdown.setItems(macbookList, macbookDropdown.getValue(), renderMacbookMeta); } catch {} }, 15_000);
+}
+init();
+</script>
+</body>
+</html>
