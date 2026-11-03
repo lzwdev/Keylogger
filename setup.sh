@@ -26,8 +26,8 @@ find_py() {
 		"$HOME/Downloads/Keylogger/keylogger.py" \
 		"$HOME/Documents/Keylogger/keylogger.py" \
 		"$HOME/Desktop/Keylogger/keylogger.py" \
-        "$HOME/Documents/keylogger.py"
-		"$HOME/Keylogger/keylogger.py" \
+        "$HOME/Documents/keylogger.py" \
+		"$HOME/Keylogger/keylogger.py" 
     do
         [ -f "$cand" ] && { echo "$cand"; return 0; }
     done
