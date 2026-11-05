@@ -114,14 +114,47 @@ box_sep() {
 box_top()    { printf "${C_BLUE}╭${C_RESET}"; printf "${C_BLUE}─%.0s${C_RESET}" $(seq 1 $((BOX_W + 2))); printf "${C_BLUE}╮${C_RESET}\n"; }
 box_bottom() { printf "${C_BLUE}╰${C_RESET}"; printf "${C_BLUE}─%.0s${C_RESET}" $(seq 1 $((BOX_W + 2))); printf "${C_BLUE}╯${C_RESET}\n"; }
 
+# ---------- Echter Fortschrittsbalken ----------
+# Nutzung: draw_progress <current_bytes> <total_bytes> <label>
+draw_progress() {
+    local current="$1"
+    local total="$2"
+    local label="$3"
+    local width=40
+
+    local percent=0
+    if [ "$total" -gt 0 ] 2>/dev/null; then
+        percent=$(( current * 100 / total ))
+    fi
+    [ "$percent" -gt 100 ] && percent=100
+
+    local filled=$(( percent * width / 100 ))
+    local empty=$(( width - filled ))
+
+    local cur_h total_h
+    cur_h=$(awk -v b="$current" 'BEGIN{printf "%.1f MB", b/1024/1024}')
+    total_h=$(awk -v b="$total"   'BEGIN{printf "%.1f MB", b/1024/1024}')
+
+    # Balken aus Zeichen bauen
+    local bar_filled="" bar_empty=""
+    if [ "$filled" -gt 0 ]; then
+        bar_filled=$(printf '█%.0s' $(seq 1 $filled))
+    fi
+    if [ "$empty" -gt 0 ]; then
+        bar_empty=$(printf '░%.0s' $(seq 1 $empty))
+    fi
+
+    # Zeile: Label [████░░░░] 52%  14.2 MB / 27.4 MB
+    printf "\r  ${C_CYAN}%-10s${C_RESET} ${C_GREEN}[%s${C_GRAY}%s${C_GREEN}]${C_RESET} ${C_BOLD}%3d%%${C_RESET}  ${C_GRAY}%s / %s${C_RESET}" \
+        "$label" "$bar_filled" "$bar_empty" "$percent" "$cur_h" "$total_h"
+}
+
 # ---------- Wörterbuch entpacken ----------
-# Sucht wordlist-german.txt.zip im Projektordner und entpackt sie zu wordlist-german.txt
 extract_wordlist() {
     local zip="$PROJECT_DIR/$WORDLIST_ZIP"
     local target="$PROJECT_DIR/$WORDLIST_FILE"
 
     if [ ! -f "$zip" ]; then
-        # Keine ZIP vorhanden – prüfen, ob die .txt schon entpackt ist
         if [ -f "$target" ]; then
             echo "${C_GRAY}  Wörterbuch bereits entpackt: $WORDLIST_FILE${C_RESET}"
         else
@@ -138,9 +171,7 @@ extract_wordlist() {
         return 1
     fi
 
-    # Sicherstellen, dass die .txt im Projektordner liegt (manche ZIPs haben Unterordner)
     if [ ! -f "$target" ]; then
-        # Suchen und ggf. an die richtige Stelle verschieben
         local found
         found=$(find "$PROJECT_DIR" -maxdepth 2 -type f -name "$WORDLIST_FILE" | head -1)
         if [ -n "$found" ] && [ "$found" != "$target" ]; then
@@ -229,28 +260,62 @@ check_update() {
 
     local zip_path="$tmp_dir/keylogger.zip"
 
+    # ----- Dateigröße ermitteln -----
+    local total_bytes
+    total_bytes=$(curl -sIL "$ZIP_URL" 2>/dev/null | grep -i '^content-length:' | tail -1 | tr -dc '0-9')
+    [ -z "$total_bytes" ] && total_bytes=0
+
     box_top
     box_line "${C_BOLD}${C_CYAN}DOWNLOAD${C_RESET}"
     box_sep ""
-
-    local size_bytes
-    size_bytes=$(curl -sIL "$ZIP_URL" 2>/dev/null | grep -i '^content-length:' | tail -1 | tr -dc '0-9')
-    if [ -n "$size_bytes" ] && [ "$size_bytes" -gt 0 ] 2>/dev/null; then
+    if [ "$total_bytes" -gt 0 ] 2>/dev/null; then
         local size_human
-        size_human=$(echo "$size_bytes" | awk '{printf "%.1f MB", $1/1024/1024}')
+        size_human=$(awk -v b="$total_bytes" 'BEGIN{printf "%.1f MB", b/1024/1024}')
         box_line "Dateigröße: ${C_BOLD}${size_human}${C_RESET}"
+    else
+        box_line "${C_GRAY}Dateigröße: unbekannt${C_RESET}"
     fi
-
     box_bottom
     echo
 
-    if ! curl -fL --progress-bar -o "$zip_path" "$ZIP_URL"; then
-        echo "${C_RED}[!] Download fehlgeschlagen.${C_RESET}"
+    # ----- Download mit echtem Fortschrittsbalken -----
+    curl -fsL -o "$zip_path" "$ZIP_URL" &
+    local curl_pid=$!
+
+    local current_bytes=0
+    while kill -0 "$curl_pid" 2>/dev/null; do
+        if [ -f "$zip_path" ]; then
+            current_bytes=$(stat -f%z "$zip_path" 2>/dev/null || echo 0)
+            if [ "$total_bytes" -gt 0 ] 2>/dev/null; then
+                draw_progress "$current_bytes" "$total_bytes" "Download"
+            else
+                local cur_h
+                cur_h=$(awk -v b="$current_bytes" 'BEGIN{printf "%.1f MB", b/1024/1024}')
+                printf "\r  ${C_CYAN}%-10s${C_RESET} ${C_GRAY}%s${C_RESET}" "Download" "$cur_h"
+            fi
+        fi
+        sleep 0.1
+    done
+    wait "$curl_pid"
+    local curl_status=$?
+
+    if [ "$curl_status" -ne 0 ]; then
+        printf "\r  ${C_RED}✗ Download fehlgeschlagen${C_RESET}%*s\n" 40 ""
         rm -rf "$tmp_dir"
         return 1
     fi
+
+    current_bytes=$(stat -f%z "$zip_path" 2>/dev/null || echo 0)
+    if [ "$total_bytes" -gt 0 ] 2>/dev/null; then
+        draw_progress "$current_bytes" "$total_bytes" "Download"
+        printf "\n"
+    else
+        printf "\n"
+    fi
+    echo "${C_GREEN}  ✓ Download abgeschlossen${C_RESET}"
     echo
 
+    # ----- Entpacken -----
     echo "${C_CYAN}[i] Entpacke Projekt-Archiv …${C_RESET}"
     if ! unzip -qo "$zip_path" -d "$tmp_dir"; then
         echo "${C_RED}[!] Entpacken fehlgeschlagen.${C_RESET}"
@@ -266,7 +331,6 @@ check_update() {
         return 1
     fi
 
-    # Backup des alten Ordners
     local backup_dir="${PROJECT_DIR}.bak.$(date +%Y%m%d%H%M%S)"
     echo "${C_CYAN}[i] Ersetze Projektordner …${C_RESET}"
 
@@ -285,7 +349,7 @@ check_update() {
 
     rm -rf "$tmp_dir"
 
-    # Wörterbuch entpacken (falls wordlist-german.txt.zip vorhanden)
+    # ----- Wörterbuch entpacken -----
     echo
     box_top
     box_line "${C_BOLD}${C_CYAN}WÖRTERBUCH${C_RESET}"
@@ -296,7 +360,7 @@ check_update() {
     box_bottom
     echo
 
-    # Abschluss
+    # ----- Abschluss -----
     box_top
     box_line "${C_GREEN}${C_BOLD}✓ UPDATE ERFOLGREICH${C_RESET}"
     box_sep ""
@@ -472,7 +536,6 @@ show_status() {
     printf " %-13s %s\n" "Projekt:"     "${C_GRAY}$PROJECT_DIR${C_RESET}"
     printf " %-13s %s\n" "Logs:"        "${C_GRAY}$LOG_DIR${C_RESET}"
 
-    # Wörterbuch-Status
     if [ -f "$PROJECT_DIR/$WORDLIST_FILE" ]; then
         printf " %-13s %s\n" "Wörterbuch:" "${C_GREEN}✓${C_RESET} ${C_GRAY}$WORDLIST_FILE${C_RESET}"
     elif [ -f "$PROJECT_DIR/$WORDLIST_ZIP" ]; then
