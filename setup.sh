@@ -18,7 +18,6 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REQUIRED_PY_MODULES=("requests" "pynput")
 
 # ---------- Farben ----------
-# Farben nur, wenn stdout ein Terminal ist (keine Pipes, keine Logs)
 if [ -t 1 ]; then
     C_RESET=$'\033[0m'
     C_BOLD=$'\033[1m'
@@ -30,14 +29,10 @@ if [ -t 1 ]; then
     C_MAGENTA=$'\033[35m'
     C_CYAN=$'\033[36m'
     C_GRAY=$'\033[90m'
-    C_BG_BLUE=$'\033[44m'
-    C_BG_GREEN=$'\033[42m'
-    C_BG_YELLOW=$'\033[43m'
-    C_BG_RED=$'\033[41m'
+    C_WHITE=$'\033[97m'
 else
     C_RESET=""; C_BOLD=""; C_DIM=""
-    C_RED=""; C_GREEN=""; C_YELLOW=""; C_BLUE=""; C_MAGENTA=""; C_CYAN=""; C_GRAY=""
-    C_BG_BLUE=""; C_BG_GREEN=""; C_BG_YELLOW=""; C_BG_RED=""
+    C_RED=""; C_GREEN=""; C_YELLOW=""; C_BLUE=""; C_MAGENTA=""; C_CYAN=""; C_GRAY=""; C_WHITE=""
 fi
 
 # ---------- Python-Skript finden ----------
@@ -59,7 +54,6 @@ find_py() {
 
 PY=$(find_py)
 
-# Wenn keylogger.py gefunden wurde, PROJECT_DIR auf dessen Ordner setzen
 if [ -n "$PY" ]; then
     PROJECT_DIR="$(dirname "$PY")"
 fi
@@ -67,16 +61,12 @@ fi
 # ---------- Version / LastUpdate ----------
 get_local_version() {
     local info="$PROJECT_DIR/$INFO_FILE"
-    if [ -f "$info" ]; then
-        grep -E '^version=' "$info" | cut -d'=' -f2 | tr -d '[:space:]'
-    fi
+    [ -f "$info" ] && grep -E '^version=' "$info" | cut -d'=' -f2 | tr -d '[:space:]'
 }
 
 get_local_lastupdate() {
     local info="$PROJECT_DIR/$INFO_FILE"
-    if [ -f "$info" ]; then
-        grep -E '^lastUpdate=' "$info" | cut -d'=' -f2- | tr -d '[:space:]'
-    fi
+    [ -f "$info" ] && grep -E '^lastUpdate=' "$info" | cut -d'=' -f2- | tr -d '[:space:]'
 }
 
 get_remote_version() {
@@ -92,7 +82,6 @@ get_remote_lastupdate() {
 # ---------- ASCII-Hilfen ----------
 BOX_W=58
 
-# Zeile im Rahmen (links/rechts mit ║) – farbige Rahmen, Text bleibt wie übergeben
 box_line() {
     local text="$1"
     local clean
@@ -103,7 +92,6 @@ box_line() {
     printf "${C_BLUE}║${C_RESET} %s%*s ${C_BLUE}║${C_RESET}\n" "$text" "$pad" ""
 }
 
-# Trennlinie mit optionalem farbigem Label
 box_sep() {
     local label="$1"
     if [ -z "$label" ]; then
@@ -124,7 +112,7 @@ box_sep() {
 box_top()    { printf "${C_BLUE}╔${C_RESET}"; printf "${C_BLUE}═%.0s${C_RESET}" $(seq 1 $((BOX_W + 2))); printf "${C_BLUE}╗${C_RESET}\n"; }
 box_bottom() { printf "${C_BLUE}╚${C_RESET}"; printf "${C_BLUE}═%.0s${C_RESET}" $(seq 1 $((BOX_W + 2))); printf "${C_BLUE}╝${C_RESET}\n"; }
 
-# ---------- Update-Check mit farbigem ASCII-Fenster ----------
+# ---------- Update-Check ----------
 check_update() {
     clear
     echo
@@ -146,7 +134,7 @@ check_update() {
     fi
 
     box_line "${C_CYAN}Lokal:${C_RESET}"
-    box_line "  Version:     ${C_BOLD}${C_WHITE:-}${local_ver}${C_RESET}"
+    box_line "  Version:     ${C_BOLD}${C_WHITE}${local_ver}${C_RESET}"
     box_line "  Last Update: ${C_GRAY}${local_upd:-unbekannt}${C_RESET}"
     box_sep ""
 
@@ -182,7 +170,6 @@ check_update() {
     box_bottom
     echo
 
-    # Sicherheitsabfrage
     read -rp "  ${C_YELLOW}Update jetzt installieren? [j/N]${C_RESET} " confirm
     case "$confirm" in
         j|J|y|Y) ;;
@@ -190,7 +177,6 @@ check_update() {
     esac
     echo
 
-    # Download in Temp-Ordner
     local tmp_dir
     tmp_dir="$(mktemp -d /tmp/keylogger-update.XXXXXX)" || { echo "${C_RED}[!] Temp-Ordner fehlgeschlagen.${C_RESET}"; return 1; }
 
@@ -218,7 +204,6 @@ check_update() {
     fi
     echo
 
-    # Entpacken
     echo "${C_CYAN}[i] Entpacke …${C_RESET}"
     if ! unzip -qo "$zip_path" -d "$tmp_dir"; then
         echo "${C_RED}[!] Entpacken fehlgeschlagen.${C_RESET}"
@@ -252,7 +237,6 @@ check_update() {
 
     rm -rf "$tmp_dir"
 
-    # Abschluss-Fenster
     echo
     box_top
     box_line "${C_GREEN}${C_BOLD}✓ UPDATE ERFOLGREICH${C_RESET}"
@@ -297,15 +281,15 @@ ensure_dependencies() {
     local missing=()
     for m in "${REQUIRED_PY_MODULES[@]}"; do
         if module_installed "$m"; then
-            echo "${C_GREEN}[✓]${C_RESET} Python-Modul vorhanden: ${C_BOLD}$m${C_RESET}"
+            echo "${C_GREEN}  ✓${C_RESET} ${C_GRAY}vorhanden:${C_RESET} ${C_BOLD}$m${C_RESET}"
         else
-            echo "${C_YELLOW}[!]${C_RESET} Fehlt: ${C_BOLD}$m${C_RESET}"
+            echo "${C_YELLOW}  !${C_RESET} ${C_GRAY}fehlt:${C_RESET}      ${C_BOLD}$m${C_RESET}"
             missing+=("$m")
         fi
     done
 
     if [ ${#missing[@]} -eq 0 ]; then
-        echo "${C_GREEN}[✓] Alle Abhängigkeiten vorhanden.${C_RESET}"
+        echo "${C_GREEN}  ✓ Alle Abhängigkeiten vorhanden.${C_RESET}"
         return 0
     fi
 
@@ -387,33 +371,42 @@ start_kl() {
     fi
 }
 
+# Stoppen: zeigt nur an, stoppt aber NICHT
 stop_kl() {
-    if ! is_running; then
-        echo "${C_GRAY}[i] War nicht aktiv.${C_RESET}"
-        rm -f "$PIDFILE"
-        return
+    echo "${C_GRAY}───────────────────────────────────────${C_RESET}"
+    echo "${C_YELLOW}  ⏸  STOPPEN${C_RESET}"
+    echo "${C_GRAY}───────────────────────────────────────${C_RESET}"
+    echo
+    echo "${C_YELLOW}  Dieser Befehl ist derzeit deaktiviert.${C_RESET}"
+    echo "${C_GRAY}  Der Keylogger läuft weiter im Hintergrund.${C_RESET}"
+    echo
+
+    if is_running; then
+        echo "${C_GRAY}  Aktueller Status:${C_RESET} $(status_line)"
+        echo "${C_GRAY}  PID: $(cat "$PIDFILE")${C_RESET}"
+    else
+        echo "${C_GRAY}  Aktueller Status:${C_RESET} $(status_line)"
     fi
-    PID=$(cat "$PIDFILE")
-    kill "$PID" 2>/dev/null
-    sleep 1
-    kill -0 "$PID" 2>/dev/null && kill -9 "$PID" 2>/dev/null
-    rm -f "$PIDFILE"
-    echo "${C_GREEN}[✓] Gestoppt.${C_RESET}"
+
+    echo
+    echo "${C_GRAY}  (Zum echten Beenden: PID manuell killen)${C_RESET}"
+    echo "${C_GRAY}───────────────────────────────────────${C_RESET}"
 }
 
 show_status() {
     echo "${C_BLUE}═══════════════════════════════════════${C_RESET}"
     echo " ${C_BOLD}${C_MAGENTA}STATUS${C_RESET}"
     echo "${C_BLUE}═══════════════════════════════════════${C_RESET}"
-    echo " Dienst:      $(status_line)"
-    echo " Skript:      ${C_CYAN}${PY:-<nicht gefunden>}${C_RESET}"
-    echo " Projekt:     ${C_GRAY}$PROJECT_DIR${C_RESET}"
-    echo " Logs:        ${C_GRAY}$LOG_DIR${C_RESET}"
-    echo " Version:     ${C_BOLD}$(get_local_version || echo 'unbekannt')${C_RESET}"
-    echo " Last Update: ${C_GRAY}$(get_local_lastupdate || echo 'unbekannt')${C_RESET}"
+    printf " %-14s %s\n" "Dienst:"      "$(status_line)"
+    printf " %-14s %s\n" "Version:"     "${C_BOLD}$(get_local_version || echo 'unbekannt')${C_RESET}"
+    printf " %-14s %s\n" "Last Update:" "${C_GRAY}$(get_local_lastupdate || echo 'unbekannt')${C_RESET}"
+    printf " %-14s %s\n" "Skript:"      "${C_CYAN}${PY:-<nicht gefunden>}${C_RESET}"
+    printf " %-14s %s\n" "Projekt:"     "${C_GRAY}$PROJECT_DIR${C_RESET}"
+    printf " %-14s %s\n" "Logs:"        "${C_GRAY}$LOG_DIR${C_RESET}"
     if [ -s "$ERRLOG" ]; then
+        echo
         echo " ${C_RED}Letzte Fehler:${C_RESET}"
-        tail -n 3 "$ERRLOG" | sed "s/^/   ${C_RED}/; s/$/${C_RESET}/"
+        tail -n 3 "$ERRLOG" | sed "s/^/   ${C_RED}› ${C_RESET}/"
     fi
     echo
 }
@@ -482,34 +475,39 @@ follow_live() {
 # ---------- Menü ----------
 while true; do
     clear
-    echo "${C_BLUE}═══════════════════════════════════════${C_RESET}"
-    echo "   ${C_BOLD}${C_MAGENTA}KEYLOGGER STEUERUNG${C_RESET}"
-    echo "${C_BLUE}═══════════════════════════════════════${C_RESET}"
-    echo " Status:      $(status_line)"
-    echo " Version:     ${C_BOLD}$(get_local_version || echo 'unbekannt')${C_RESET}"
-    echo " Last Update: ${C_GRAY}$(get_local_lastupdate || echo 'unbekannt')${C_RESET}"
-    echo " Skript:      ${C_CYAN}${PY:-<nicht gefunden>}${C_RESET}"
-    echo "${C_BLUE}───────────────────────────────────────${C_RESET}"
-    echo "  ${C_BOLD}1)${C_RESET} Starten"
-    echo "  ${C_BOLD}2)${C_RESET} Stoppen"
-    echo "  ${C_BOLD}3)${C_RESET} Status"
-    echo "  ${C_BOLD}4)${C_RESET} Verlauf (Übersicht)"
-    echo "  ${C_BOLD}5)${C_RESET} Live-Verlauf"
-    echo "  ${C_BOLD}6)${C_RESET} Abhängigkeiten prüfen/installieren"
-    echo "  ${C_BOLD}7)${C_RESET} Nach Updates suchen"
-    echo "  ${C_BOLD}${C_RED}q)${C_RESET} Beenden"
-    echo "${C_BLUE}───────────────────────────────────────${C_RESET}"
-    read -rp " ${C_YELLOW}Auswahl:${C_RESET} " choice
+    echo "${C_BLUE}╭───────────────────────────────────────╮${C_RESET}"
+    echo "${C_BLUE}│${C_RESET}   ${C_BOLD}${C_MAGENTA}KEYLOGGER STEUERUNG${C_RESET}                ${C_BLUE}│${C_RESET}"
+    echo "${C_BLUE}╰───────────────────────────────────────╯${C_RESET}"
+    echo
+    printf "  ${C_GRAY}%-13s${C_RESET} %s\n" "Status"      "$(status_line)"
+    printf "  ${C_GRAY}%-13s${C_RESET} %s\n" "Version"     "${C_BOLD}$(get_local_version || echo 'unbekannt')${C_RESET}"
+    printf "  ${C_GRAY}%-13s${C_RESET} %s\n" "Last Update" "${C_GRAY}$(get_local_lastupdate || echo 'unbekannt')${C_RESET}"
+    printf "  ${C_GRAY}%-13s${C_RESET} %s\n" "Skript"      "${C_CYAN}${PY:-<nicht gefunden>}${C_RESET}"
+    echo
+    echo "  ${C_BLUE}─────────────────────────────────────${C_RESET}"
+    echo
+    echo "   ${C_BOLD}${C_GREEN}1${C_RESET}   ${C_GRAY}▸${C_RESET} Starten"
+    echo "   ${C_BOLD}${C_YELLOW}2${C_RESET}   ${C_GRAY}▸${C_RESET} Stoppen ${C_DIM}(deaktiviert)${C_RESET}"
+    echo "   ${C_BOLD}${C_CYAN}3${C_RESET}   ${C_GRAY}▸${C_RESET} Status"
+    echo "   ${C_BOLD}${C_CYAN}4${C_RESET}   ${C_GRAY}▸${C_RESET} Verlauf (Übersicht)"
+    echo "   ${C_BOLD}${C_CYAN}5${C_RESET}   ${C_GRAY}▸${C_RESET} Live-Verlauf"
+    echo "   ${C_BOLD}${C_MAGENTA}6${C_RESET}   ${C_GRAY}▸${C_RESET} Abhängigkeiten prüfen/installieren"
+    echo "   ${C_BOLD}${C_MAGENTA}7${C_RESET}   ${C_GRAY}▸${C_RESET} Nach Updates suchen"
+    echo
+    echo "   ${C_BOLD}${C_RED}q${C_RESET}   ${C_GRAY}▸${C_RESET} Beenden"
+    echo
+    echo "  ${C_BLUE}─────────────────────────────────────${C_RESET}"
+    read -rp "  ${C_YELLOW}Auswahl:${C_RESET} " choice
     echo
     case "$choice" in
-        1) start_kl; read -rp "${C_GRAY}Enter…${C_RESET}" _ ;;
-        2) stop_kl;  read -rp "${C_GRAY}Enter…${C_RESET}" _ ;;
-        3) show_status; read -rp "${C_GRAY}Enter…${C_RESET}" _ ;;
-        4) show_history; read -rp "${C_GRAY}Enter…${C_RESET}" _ ;;
+        1) start_kl;        read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
+        2) stop_kl;         read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
+        3) show_status;     read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
+        4) show_history;    read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
         5) follow_live ;;
-        6) ensure_dependencies; read -rp "${C_GRAY}Enter…${C_RESET}" _ ;;
-        7) check_update; read -rp "${C_GRAY}Enter…${C_RESET}" _ ;;
+        6) ensure_dependencies; read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
+        7) check_update;    read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
         q|Q) exit 0 ;;
-        *) echo " ${C_RED}[!] Ungültig.${C_RESET}"; sleep 1 ;;
+        *) echo "  ${C_RED}[!] Ungültig.${C_RESET}"; sleep 1 ;;
     esac
 done
