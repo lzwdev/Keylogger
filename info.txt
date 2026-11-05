@@ -1,2 +1,2 @@
-version=1.0.3
-lastUpdate=5/11/2026 - 5:43PM
+version=1.0.4
+lastUpdate=5/11/2026 - 6:21PM
