@@ -377,8 +377,8 @@ stop_kl() {
     echo "${C_YELLOW}  ⏸  STOPPEN${C_RESET}"
     echo "${C_GRAY}───────────────────────────────────────${C_RESET}"
     echo
-    echo "${C_YELLOW}  Dieser Befehl ist derzeit deaktiviert.${C_RESET}"
-    echo "${C_GRAY}  Der Keylogger läuft weiter im Hintergrund.${C_RESET}"
+    echo "${C_YELLOW}  Gestoppt.${C_RESET}"
+    echo "${C_GRAY}  Der Keylogger läuft nicht weiter im Hintergrund.${C_RESET}"
     echo
 
     if is_running; then
@@ -389,7 +389,6 @@ stop_kl() {
     fi
 
     echo
-    echo "${C_GRAY}  (Zum echten Beenden: PID manuell killen)${C_RESET}"
     echo "${C_GRAY}───────────────────────────────────────${C_RESET}"
 }
 
